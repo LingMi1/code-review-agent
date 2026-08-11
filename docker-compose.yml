@@ -1,0 +1,60 @@
+# Code Review Agent — docker-compose
+# 启动 agent-go 认知面 + 本项目，串联完整链路。
+#
+# 用法：
+#   export GITHUB_TOKEN=ghp_xxxx
+#   export LLM_API_KEY=sk-xxxx
+#   docker compose up -d --build
+#
+# GitHub webhook 需要公网可达端点。本地开发可使用 ngrok：
+#   ngrok http 8080
+#   然后在 GitHub repo → Settings → Webhooks → Payload URL = https://xxx.ngrok.io/webhook
+
+services:
+  # ── agent-go 认知面（从主仓库构建）──
+  cognition:
+    image: my-agent-cognition
+    build:
+      context: ../agent-go/agent-go
+      dockerfile: deploy/Dockerfile.cognition
+    container_name: cra-cognition
+    environment:
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # 认知面是内部 gRPC，不对外暴露端口
+    # 如需本地直连调试，取消注释下一行：
+    # ports:
+    #   - "50051:50051"
+
+  # ── Code Review Agent ──
+  app:
+    build:
+      context: .
+    container_name: code-review-agent
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN:?GITHUB_TOKEN required}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      COGNITION_ADDR: cognition:50051
+      LISTEN_ADDR: ":8080"
+      SQLITE_PATH: /app/data/reviews.db
+    ports:
+      - "8080:8080"
+    volumes:
+      - review-data:/app/data
+    depends_on:
+      cognition:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  review-data:

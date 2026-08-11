@@ -1,0 +1,139 @@
+// Package diff 解析 unified diff 并按文件分块。
+package diff
+
+import (
+	"strings"
+)
+
+// FileDiff 是一个文件的 diff 内容。
+type FileDiff struct {
+	FileName string
+	Hunk     string // 完整的 unified diff hunk（含 @@ header）
+	Lines    int    // 估算行数（新增 + 删除 + 上下文行数）
+}
+
+// Parse 解析 unified diff 并按文件分组。
+// 返回按文件拆分的 diff 切片。
+func Parse(rawDiff string) []FileDiff {
+	if rawDiff == "" {
+		return nil
+	}
+
+	var files []FileDiff
+	var current *FileDiff
+
+	lines := strings.Split(rawDiff, "\n")
+	for _, line := range lines {
+		// diff --git a/xxx b/xxx 表示新文件的开始
+		if strings.HasPrefix(line, "diff --git ") {
+			if current != nil && len(current.Hunk) > 0 {
+				files = append(files, *current)
+			}
+			current = &FileDiff{
+				FileName: parseFileName(line),
+			}
+			continue
+		}
+
+		if current == nil {
+			continue
+		}
+
+		// 跳过 index / --- / +++ 等 meta 行（保留为 diff 的上下文）
+		current.Hunk += line + "\n"
+		current.Lines++
+	}
+
+	// 最后一个文件
+	if current != nil && len(current.Hunk) > 0 {
+		files = append(files, *current)
+	}
+
+	return files
+}
+
+// parseFileName 从 "diff --git a/path b/path" 中提取路径。
+func parseFileName(line string) string {
+	// 格式: "diff --git a/foo/bar.go b/foo/bar.go"
+	parts := strings.SplitN(line, " ", 4)
+	if len(parts) >= 4 {
+		b := parts[3]
+		if strings.HasPrefix(b, "b/") {
+			return strings.TrimPrefix(b, "b/")
+		}
+	}
+	return line
+}
+
+// ChunkBySize 将文件 diff 按最大行数分块。
+// 单块 > maxLines 行则尝试在 @@ hunk 边界处分割。
+func ChunkBySize(files []FileDiff, maxLines int) [][]FileDiff {
+	if maxLines <= 0 {
+		maxLines = 500
+	}
+
+	var chunks [][]FileDiff
+	var currentChunk []FileDiff
+	currentLines := 0
+
+	for _, f := range files {
+		if f.Lines > maxLines {
+			// 大文件：先 flush 当前 chunk，再单独成块
+			if len(currentChunk) > 0 {
+				chunks = append(chunks, currentChunk)
+				currentChunk = nil
+				currentLines = 0
+			}
+			chunks = append(chunks, []FileDiff{f})
+			continue
+		}
+
+		if currentLines+f.Lines > maxLines && len(currentChunk) > 0 {
+			chunks = append(chunks, currentChunk)
+			currentChunk = nil
+			currentLines = 0
+		}
+
+		currentChunk = append(currentChunk, f)
+		currentLines += f.Lines
+	}
+
+	if len(currentChunk) > 0 {
+		chunks = append(chunks, currentChunk)
+	}
+
+	return chunks
+}
+
+// SkipGeneratedFiles 过滤掉生成文件（lock 文件、generated 标记、binary 文件等）。
+func SkipGeneratedFiles(files []FileDiff) []FileDiff {
+	var filtered []FileDiff
+	for _, f := range files {
+		if isGeneratedFile(f.FileName) {
+			continue
+		}
+		filtered = append(filtered, f)
+	}
+	return filtered
+}
+
+// isGeneratedFile 判断是否为生成文件。
+func isGeneratedFile(name string) bool {
+	generatedPatterns := []string{
+		"package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+		"go.sum", "Cargo.lock", "Gemfile.lock",
+		".pb.go", "_grpc.pb.go", ".pb.cc",
+		".gen.go", ".generated.", "autogen",
+		"vendor/", "node_modules/",
+		".min.js", ".min.css",
+		".svg", ".png", ".jpg", ".jpeg", ".gif", ".ico",
+		".woff", ".woff2", ".ttf", ".eot",
+		".pb.go", "genproto/",
+	}
+	for _, pattern := range generatedPatterns {
+		if strings.Contains(name, pattern) {
+			return true
+		}
+	}
+	return false
+}

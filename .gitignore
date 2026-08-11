@@ -1,0 +1,17 @@
+# Binaries
+server.exe
+*.exe
+*.test
+*.out
+
+# Data
+data/
+*.db
+*.sqlite
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
