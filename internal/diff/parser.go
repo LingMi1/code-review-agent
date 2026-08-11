@@ -117,6 +117,26 @@ func SkipGeneratedFiles(files []FileDiff) []FileDiff {
 	return filtered
 }
 
+// SkipLockFiles 过滤掉依赖锁文件和大型数据文件。
+func SkipLockFiles(files []FileDiff) []FileDiff {
+	lockPatterns := []string{
+		"package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+		"go.sum", "Cargo.lock", "Gemfile.lock", "poetry.lock",
+		"composer.lock", "Pipfile.lock", "mix.lock",
+	}
+	var filtered []FileDiff
+outer:
+	for _, f := range files {
+		for _, pattern := range lockPatterns {
+			if strings.Contains(f.FileName, pattern) {
+				continue outer
+			}
+		}
+		filtered = append(filtered, f)
+	}
+	return filtered
+}
+
 // isGeneratedFile 判断是否为生成文件。
 func isGeneratedFile(name string) bool {
 	generatedPatterns := []string{

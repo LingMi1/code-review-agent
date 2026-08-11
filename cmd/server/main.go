@@ -8,6 +8,12 @@
 //	go run ./cmd/server/
 //
 // 需要 agent-go 认知面已启动（docker compose up agent-go-cognition）。
+//
+// 可观测性：
+//
+//	GET /metrics  — Prometheus text format 指标
+//	GET /health   — 健康检查
+//	X-Trace-ID header + 结构化日志 trace_id 贯穿全链路
 package main
 
 import (
@@ -24,6 +30,9 @@ import (
 	"github.com/LingMi1/code-review-agent/internal/cognition"
 	"github.com/LingMi1/code-review-agent/internal/diff"
 	"github.com/LingMi1/code-review-agent/internal/github"
+	"github.com/LingMi1/code-review-agent/internal/metrics"
+	"github.com/LingMi1/code-review-agent/internal/middleware"
+	"github.com/LingMi1/code-review-agent/internal/otel"
 	"github.com/LingMi1/code-review-agent/internal/prompt"
 	"github.com/LingMi1/code-review-agent/internal/review"
 	"github.com/LingMi1/code-review-agent/internal/store"
@@ -31,7 +40,8 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	// 结构化日志 + 自动 trace_id 注入
+	slog.SetDefault(slog.New(otel.NewSlogHandler()))
 
 	// 环境变量
 	githubToken := os.Getenv("GITHUB_TOKEN")
@@ -47,6 +57,9 @@ func main() {
 	if cognitionAddr == "" {
 		cognitionAddr = "localhost:50051"
 	}
+
+	// Prometheus 指标
+	m := metrics.New()
 
 	// 初始化组件
 	ghClient := github.New(githubToken)
@@ -73,10 +86,13 @@ func main() {
 
 	// PR 处理回调
 	onPR := func(event *webhook.PullRequestEvent) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
+		// 创建根 span：整个 PR 审查流程
+		ctx, span := otel.StartSpan(context.Background(), "review.pr")
+		defer span.End()
 
-		slog.Info("processing PR",
+		reviewStart := time.Now()
+
+		slog.InfoContext(ctx, "processing PR",
 			"pr", event.PRNumber,
 			"repo", event.RepoFullName,
 			"action", event.Action,
@@ -89,6 +105,7 @@ func main() {
 		// 1. 创建审查记录
 		reviewID, err := db.InsertReview(event.PRNumber, event.RepoFullName, event.HeadSHA)
 		if err != nil {
+			m.RecordFailure()
 			return fmt.Errorf("insert review record: %w", err)
 		}
 		db.AuditLog("review.started", event.PRNumber, event.RepoFullName, fmt.Sprintf("review_id=%d", reviewID))
@@ -96,87 +113,104 @@ func main() {
 		// 2. 解析 owner/repo
 		parts := strings.SplitN(event.RepoFullName, "/", 2)
 		if len(parts) != 2 {
+			m.RecordFailure()
 			return fmt.Errorf("invalid repo: %s", event.RepoFullName)
 		}
-		owner, repo := parts[0], parts[1]
+		owner, repoName := parts[0], parts[1]
 
 		// 3. 获取 PR diff
-		slog.Info("fetching PR diff", "pr", event.PRNumber)
-		rawDiff, err := ghClient.PRDiff(ctx, owner, repo, event.PRNumber)
-		if err != nil {
-			db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
-			db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
-			return fmt.Errorf("fetch PR diff: %w", err)
+		{
+			_, fetchSpan := otel.StartSpan(ctx, "github.fetch_diff")
+			slog.Info("fetching PR diff", "pr", event.PRNumber)
+			rawDiff, err := ghClient.PRDiff(ctx, owner, repoName, event.PRNumber)
+			fetchSpan.End()
+			if err != nil {
+				db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
+				db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
+				m.RecordFailure()
+				return fmt.Errorf("fetch PR diff: %w", err)
+			}
+
+			// 4. 解析 diff → 按文件分块
+			_, parseSpan := otel.StartSpan(ctx, "diff.parse")
+			files := diff.Parse(rawDiff)
+			// 5. 过滤生成文件 + Token 预算优化
+			files = diff.SkipGeneratedFiles(files)
+			files = diff.SkipLockFiles(files)
+			const maxChunkLines = 800
+			chunks := diff.ChunkBySize(files, maxChunkLines)
+			parseSpan.End()
+
+			if len(chunks) == 0 {
+				slog.InfoContext(ctx, "no files to review (all generated/skipped)", "pr", event.PRNumber)
+				db.UpdateReview(reviewID, "success", 0, "No reviewable files", "", "")
+				return nil
+			}
+
+			slog.InfoContext(ctx, "diff parsed",
+				"pr", event.PRNumber,
+				"files", len(files),
+				"chunks", len(chunks),
+			)
+
+			// 6. 构造 prompt
+			prTitle := fmt.Sprintf("%s#%d", event.RepoFullName, event.PRNumber)
+			reviewPrompt := prompt.BuildReviewPrompt(prTitle, files)
+
+			// Token 预算：截断过长 prompt（~8K tokens）
+			const maxPromptBytes = 32_000
+			reviewPrompt = prompt.TruncatePrompt(reviewPrompt, maxPromptBytes)
+
+			// 7. 调用 agent-go 认知面
+			_, cognitionSpan := otel.StartSpan(ctx, "cognition.run_review")
+			slog.InfoContext(ctx, "calling agent-go cognition", "pr", event.PRNumber, "prompt_bytes", len(reviewPrompt))
+			result, err := cogClient.RunReview(ctx, cognition.ReviewRequest{
+				SessionID: fmt.Sprintf("pr-review-%s-%d", repoName, event.PRNumber),
+				Query:     reviewPrompt,
+				AgentType: "react",
+				MaxSteps:  5,
+			})
+			cognitionSpan.End()
+			if err != nil {
+				db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
+				db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
+				m.RecordCognitionError()
+				m.RecordFailure()
+				// 降级：发一条 comment 说明 Agent 暂时不可用
+				ghClient.PostIssueComment(ctx, owner, repoName, event.PRNumber,
+					"## AI Code Review\n\n**Agent temporarily unavailable.**\n\n> "+err.Error()+
+						"\n\n---\n*Powered by [agent-go](https://github.com/LingMi1/agent-go)*")
+				return fmt.Errorf("run review: %w", err)
+			}
+
+			slog.InfoContext(ctx, "review completed",
+				"pr", event.PRNumber,
+				"duration", result.Duration,
+				"output_chars", len(result.Text),
+			)
+
+			// 8. 解析结果 + 投递到 GitHub
+			_, postSpan := otel.StartSpan(ctx, "github.post_review")
+			if err := review.ParseAndPost(ctx, ghClient, owner, repoName, event.PRNumber, event.HeadSHA, result.Text); err != nil {
+				db.UpdateReview(reviewID, "failed", 0, "", result.Duration.String(), err.Error())
+				db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
+				m.RecordFailure()
+				postSpan.End()
+				return fmt.Errorf("post review: %w", err)
+			}
+			postSpan.End()
+
+			// 9. 更新审查记录
+			issues := parseIssueCount(result.Text)
+			db.UpdateReview(reviewID, "success", issues, parseSummary(result.Text), result.Duration.String(), "")
+			db.AuditLog("review.completed", event.PRNumber, event.RepoFullName,
+				fmt.Sprintf("issues=%d duration=%s", issues, result.Duration))
+
+			m.RecordSuccess(result.Duration.Milliseconds(), len(result.Text), issues)
+
+			slog.InfoContext(ctx, "review posted to GitHub", "pr", event.PRNumber, "issues", issues)
 		}
-
-		// 4. 解析 diff → 按文件分块
-		files := diff.Parse(rawDiff)
-
-		// 5. 过滤生成文件
-		files = diff.SkipGeneratedFiles(files)
-
-		// 6. Token 预算控制：大 PR 按文件分块
-		const maxChunkLines = 800
-		chunks := diff.ChunkBySize(files, maxChunkLines)
-
-		if len(chunks) == 0 {
-			slog.Info("no files to review (all generated/skipped)", "pr", event.PRNumber)
-			db.UpdateReview(reviewID, "success", 0, "No reviewable files", "", "")
-			return nil
-		}
-
-		slog.Info("diff parsed",
-			"pr", event.PRNumber,
-			"files", len(files),
-			"chunks", len(chunks),
-		)
-
-		// 7. 构造 prompt
-		prTitle := fmt.Sprintf("%s#%d", event.RepoFullName, event.PRNumber)
-		reviewPrompt := prompt.BuildReviewPrompt(prTitle, files)
-
-		// Token 预算：截断过长 prompt
-		const maxPromptBytes = 32_000 // ~8K tokens
-		reviewPrompt = prompt.TruncatePrompt(reviewPrompt, maxPromptBytes)
-
-		// 8. 调用 agent-go 认知面
-		slog.Info("calling agent-go cognition", "pr", event.PRNumber, "prompt_bytes", len(reviewPrompt))
-		result, err := cogClient.RunReview(ctx, cognition.ReviewRequest{
-			SessionID: fmt.Sprintf("pr-review-%s-%d", repo, event.PRNumber),
-			Query:     reviewPrompt,
-			AgentType: "react",
-			MaxSteps:  5,
-		})
-		if err != nil {
-			db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
-			db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
-			// 降级：发一条 comment 说明 Agent 暂时不可用
-			ghClient.PostIssueComment(ctx, owner, repo, event.PRNumber,
-				"## AI Code Review\n\n**Agent temporarily unavailable.**\n\n> "+err.Error()+
-					"\n\n---\n*Powered by [agent-go](https://github.com/yourname/agent-go)*")
-			return fmt.Errorf("run review: %w", err)
-		}
-
-		slog.Info("review completed",
-			"pr", event.PRNumber,
-			"duration", result.Duration,
-			"output_chars", len(result.Text),
-		)
-
-		// 9. 解析结果 + 投递到 GitHub
-		if err := review.ParseAndPost(ctx, ghClient, owner, repo, event.PRNumber, event.HeadSHA, result.Text); err != nil {
-			db.UpdateReview(reviewID, "failed", 0, "", result.Duration.String(), err.Error())
-			db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
-			return fmt.Errorf("post review: %w", err)
-		}
-
-		// 10. 更新审查记录
-		issues := parseIssueCount(result.Text)
-		db.UpdateReview(reviewID, "success", issues, parseSummary(result.Text), result.Duration.String(), "")
-		db.AuditLog("review.completed", event.PRNumber, event.RepoFullName,
-			fmt.Sprintf("issues=%d duration=%s", issues, result.Duration))
-
-		slog.Info("review posted to GitHub", "pr", event.PRNumber, "issues", issues)
+		slog.InfoContext(ctx, "review total duration", "ms", time.Since(reviewStart).Milliseconds())
 		return nil
 	}
 
@@ -184,10 +218,11 @@ func main() {
 	wh := webhook.New(webhookSecret, onPR)
 	mux := http.NewServeMux()
 	mux.Handle("/webhook", wh)
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
-	})
+	}))
+	mux.Handle("/metrics", m) // Prometheus 指标端点
 
 	// 审查历史 API
 	mux.HandleFunc("/api/reviews", func(w http.ResponseWriter, r *http.Request) {
@@ -209,9 +244,12 @@ func main() {
 		writeJSON(w, review)
 	})
 
+	// 包裹 OTel trace middleware
+	handler := middleware.Tracing(mux)
+
 	srv := &http.Server{
 		Addr:    listenAddr,
-		Handler: mux,
+		Handler: handler,
 	}
 
 	// 优雅关闭
@@ -225,7 +263,11 @@ func main() {
 		srv.Shutdown(ctx)
 	}()
 
-	slog.Info("code-review-agent starting", "listen", listenAddr, "cognition", cognitionAddr)
+	slog.Info("code-review-agent starting",
+		"listen", listenAddr,
+		"cognition", cognitionAddr,
+		"metrics", fmt.Sprintf("%s/metrics", listenAddr),
+	)
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
