@@ -123,6 +123,7 @@ func SkipLockFiles(files []FileDiff) []FileDiff {
 		"package-lock.json", "yarn.lock", "pnpm-lock.yaml",
 		"go.sum", "Cargo.lock", "Gemfile.lock", "poetry.lock",
 		"composer.lock", "Pipfile.lock", "mix.lock",
+		"CHANGELOG.md", ".gitignore", ".dockerignore", ".editorconfig",
 	}
 	var filtered []FileDiff
 outer:
@@ -135,6 +136,47 @@ outer:
 		filtered = append(filtered, f)
 	}
 	return filtered
+}
+
+// SkipDataFiles 过滤掉数据文件和配置文件（CSV/JSON 数据等）。
+func SkipDataFiles(files []FileDiff) []FileDiff {
+	dataPatterns := []string{".csv", ".geojson", ".graphql", ".proto"}
+	var filtered []FileDiff
+outer:
+	for _, f := range files {
+		for _, pattern := range dataPatterns {
+			if strings.HasSuffix(f.FileName, pattern) {
+				continue outer
+			}
+		}
+		filtered = append(filtered, f)
+	}
+	return filtered
+}
+
+// PRSize 计算 PR 的有效文件数和总变更行数。
+type PRSize struct {
+	Files      int
+	Lines      int     // 总变更行数
+	Ratio      float64 // 有效文件数 / 总文件数
+}
+
+// CalcPRSize 计算 PR 的规模指标。
+func CalcPRSize(allFiles, filtered []FileDiff) PRSize {
+	s := PRSize{Files: len(filtered)}
+	if len(allFiles) > 0 {
+		s.Ratio = float64(len(filtered)) / float64(len(allFiles))
+	}
+	for _, f := range filtered {
+		s.Lines += f.Lines
+	}
+	return s
+}
+
+// ShouldUsePlanExecute 判断是否应使用 Plan-Execute 模式。
+// 阈值：10+ 个有效文件，或 3000+ 行变更。
+func ShouldUsePlanExecute(size PRSize) bool {
+	return size.Files >= 10 || size.Lines >= 3000
 }
 
 // isGeneratedFile 判断是否为生成文件。

@@ -69,7 +69,7 @@ func (c *Client) RunReview(ctx context.Context, req ReviewRequest) (*ReviewResul
 	}
 	maxSteps := req.MaxSteps
 	if maxSteps <= 0 {
-		maxSteps = 3 // 审查任务不需要太多步骤
+		maxSteps = 3
 	}
 
 	runID := uuid.New().String()
@@ -81,13 +81,62 @@ func (c *Client) RunReview(ctx context.Context, req ReviewRequest) (*ReviewResul
 		MaxSteps:      maxSteps,
 		SchemaVersion: "v1",
 		Metadata: map[string]string{
-			"output_format": "json", // 告诉认知面期望 JSON 输出
+			"output_format": "json",
 		},
 	}, grpc.WaitForReady(true))
 	if err != nil {
 		return nil, fmt.Errorf("cognition: open run stream: %w", err)
 	}
 
+	finalText, err := collectFinalResult(runID, stream)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ReviewResult{
+		Text:     finalText,
+		Duration: time.Since(start),
+	}, nil
+}
+
+// RunPlanExecuteReview 使用 Plan-Execute 模式审查大型 PR。
+// Plan-Execute 会自动拆解审查为子任务（安全、风格、性能等），并行执行后汇总。
+func (c *Client) RunPlanExecuteReview(ctx context.Context, sessID, query string, maxSteps int32) (*ReviewResult, error) {
+	if maxSteps <= 0 {
+		maxSteps = 8 // Plan-Execute 需要更多步数（plan + execute + aggregate）
+	}
+	start := time.Now()
+
+	runID := uuid.New().String()
+	stream, err := c.svc.Run(ctx, &agentv1.RunRequest{
+		RunId:         runID,
+		SessionId:     sessID,
+		Query:         query,
+		AgentType:     "plan_execute",
+		MaxSteps:      maxSteps,
+		SchemaVersion: "v1",
+		Metadata: map[string]string{
+			"output_format": "json",
+			"review_mode":   "plan_execute",
+		},
+	}, grpc.WaitForReady(true))
+	if err != nil {
+		return nil, fmt.Errorf("cognition: open plan-execute stream: %w", err)
+	}
+
+	finalText, err := collectFinalResult(runID, stream)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ReviewResult{
+		Text:     finalText,
+		Duration: time.Since(start),
+	}, nil
+}
+
+// collectFinalResult 从 gRPC server-stream 中收集最终结果文本。
+func collectFinalResult(runID string, stream agentv1.CognitionService_RunClient) (string, error) {
 	var finalText string
 	for {
 		event, err := stream.Recv()
@@ -95,7 +144,7 @@ func (c *Client) RunReview(ctx context.Context, req ReviewRequest) (*ReviewResul
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("cognition: recv event: %w", err)
+			return "", fmt.Errorf("cognition: recv event: %w", err)
 		}
 
 		slog.Debug("cognition: event",
@@ -105,7 +154,6 @@ func (c *Client) RunReview(ctx context.Context, req ReviewRequest) (*ReviewResul
 			"step", event.GetStep(),
 		)
 
-		// 收集思考过程和工具调用日志
 		if thought := event.GetToolThought(); thought != nil {
 			slog.Info("cognition: thought", "text", truncate(thought.GetText(), 200))
 		}
@@ -115,26 +163,17 @@ func (c *Client) RunReview(ctx context.Context, req ReviewRequest) (*ReviewResul
 				"status", tool.GetStatus().String(),
 			)
 		}
-
-		// 最终结果
 		if result := event.GetResult(); result != nil {
 			finalText = result.GetText()
 		}
-
-		// 检查是否 run 终态
 		if event.GetFinish() {
 			break
 		}
 	}
-
 	if finalText == "" {
-		return nil, fmt.Errorf("cognition: no result text in run %s", runID)
+		return "", fmt.Errorf("cognition: no result text in run %s", runID)
 	}
-
-	return &ReviewResult{
-		Text:     finalText,
-		Duration: time.Since(start),
-	}, nil
+	return finalText, nil
 }
 
 // truncate 截断字符串用于日志。

@@ -154,10 +154,11 @@ func main() {
 
 			// 4. 解析 diff → 按文件分块
 			_, parseSpan := otel.StartSpan(ctx, "diff.parse")
-			files := diff.Parse(rawDiff)
 			// 5. 过滤生成文件 + Token 预算优化
-			files = diff.SkipGeneratedFiles(files)
+			allFiles := diff.Parse(rawDiff)        // 保留全量用于计算 PR size
+			files := diff.SkipGeneratedFiles(allFiles)
 			files = diff.SkipLockFiles(files)
+			files = diff.SkipDataFiles(files)
 			const maxChunkLines = 800
 			chunks := diff.ChunkBySize(files, maxChunkLines)
 			parseSpan.End()
@@ -168,32 +169,58 @@ func main() {
 				return nil
 			}
 
+			// PR 规模判断 → 智能选择 Agent 模式
+			prSize := diff.CalcPRSize(allFiles, files)
+			usePlanExecute := diff.ShouldUsePlanExecute(prSize)
+
 			slog.InfoContext(ctx, "diff parsed",
 				"pr", event.PRNumber,
 				"files", len(files),
+				"total_files", len(allFiles),
 				"chunks", len(chunks),
+				"lines", prSize.Lines,
+				"mode", map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
 			)
 
 			sseHub.Publish(sessionID, sse.Event{Type: "review.progress", Data: fmt.Sprintf(
-				`{"pr":%d,"status":"analyzing","files":%d,"chunks":%d}`, event.PRNumber, len(files), len(chunks))})
+				`{"pr":%d,"status":"analyzing","files":%d,"chunks":%d,"mode":"%s"}`,
+				event.PRNumber, len(files), len(chunks),
+				map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
+			)})
 
-			// 6. 构造 prompt
+			// 6. 构造 prompt（根据模式选择）
 			prTitle := fmt.Sprintf("%s#%d", event.RepoFullName, event.PRNumber)
-			reviewPrompt := prompt.BuildReviewPrompt(prTitle, files)
+			var reviewPrompt string
+			if usePlanExecute {
+				reviewPrompt = prompt.BuildPlanExecutePrompt(prTitle, files)
+			} else {
+				reviewPrompt = prompt.BuildReviewPrompt(prTitle, files)
+			}
 
 			// Token 预算：截断过长 prompt（~8K tokens）
 			const maxPromptBytes = 32_000
 			reviewPrompt = prompt.TruncatePrompt(reviewPrompt, maxPromptBytes)
 
-			// 7. 调用 agent-go 认知面
+			// 7. 调用 agent-go 认知面（智能路由）
 			_, cognitionSpan := otel.StartSpan(ctx, "cognition.run_review")
-			slog.InfoContext(ctx, "calling agent-go cognition", "pr", event.PRNumber, "prompt_bytes", len(reviewPrompt))
-			result, err := cogClient.RunReview(ctx, cognition.ReviewRequest{
-				SessionID: fmt.Sprintf("pr-review-%s-%d", repoName, event.PRNumber),
-				Query:     reviewPrompt,
-				AgentType: "react",
-				MaxSteps:  5,
-			})
+			slog.InfoContext(ctx, "calling agent-go cognition",
+				"pr", event.PRNumber,
+				"prompt_bytes", len(reviewPrompt),
+				"use_plan_execute", usePlanExecute,
+			)
+			var result *cognition.ReviewResult
+			if usePlanExecute {
+				result, err = cogClient.RunPlanExecuteReview(ctx,
+					fmt.Sprintf("pr-review-%s-%d", repoName, event.PRNumber),
+					reviewPrompt, 8)
+			} else {
+				result, err = cogClient.RunReview(ctx, cognition.ReviewRequest{
+					SessionID: fmt.Sprintf("pr-review-%s-%d", repoName, event.PRNumber),
+					Query:     reviewPrompt,
+					AgentType: "react",
+					MaxSteps:  5,
+				})
+			}
 			cognitionSpan.End()
 			if err != nil {
 				db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())

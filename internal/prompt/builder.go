@@ -34,9 +34,59 @@ func BuildReviewPrompt(prTitle string, files []diff.FileDiff) string {
 		b.WriteString("\n```\n\n")
 	}
 
-	b.WriteString("## Instructions\n\n")
-	b.WriteString("Analyze the code changes and output your review as a JSON object ")
-	b.WriteString("with this exact structure:\n\n")
+	writeJSONResponseFormat(&b)
+	return b.String()
+}
+
+// BuildPlanExecutePrompt 构造 Plan-Execute 模式的审查 prompt。
+// Plan-Execute 将审查拆解为多个子任务并行执行后汇总。
+func BuildPlanExecutePrompt(prTitle string, files []diff.FileDiff) string {
+	var b strings.Builder
+
+	b.WriteString("You are an expert code reviewer analyzing a large pull request. ")
+	b.WriteString("Use plan-execute mode: first create a plan decomposing the review ")
+	b.WriteString("into independent sub-tasks, then execute each sub-task, and finally ")
+	b.WriteString("aggregate the results into a single review.\n\n")
+
+	if prTitle != "" {
+		b.WriteString(fmt.Sprintf("PR Title: %s\n\n", prTitle))
+	}
+
+	b.WriteString("## Review Plan\n\n")
+	b.WriteString("Decompose the review into these sub-tasks:\n")
+	b.WriteString("1. **Security Review** — Scan for SQL injection, XSS, hardcoded credentials, ")
+	b.WriteString("command injection, path traversal, and insecure dependencies.\n")
+	b.WriteString("2. **Bug Detection** — Identify null pointer dereferences, race conditions, ")
+	b.WriteString("resource leaks (unclosed files, connections), missing error handling, ")
+	b.WriteString("and logic errors.\n")
+	b.WriteString("3. **Performance Analysis** — Check for inefficient loops, unnecessary allocations, ")
+	b.WriteString("missing connection pooling, large memory footprints, and blocking I/O.\n")
+	b.WriteString("4. **Code Quality** — Evaluate naming conventions, code organization, DRY violations, ")
+	b.WriteString("excessive complexity, and missing test coverage indicators.\n\n")
+	b.WriteString("Execute each sub-task independently. Found issues should include the file, ")
+	b.WriteString("line number, and category (security/bug/performance/style).\n\n")
+
+	b.WriteString("## Changed Files\n\n")
+	for _, f := range files {
+		b.WriteString(fmt.Sprintf("- `%s` (%d lines changed)\n", f.FileName, f.Lines))
+	}
+	b.WriteString("\n## Diff\n\n")
+
+	for _, f := range files {
+		b.WriteString(fmt.Sprintf("### %s\n\n", f.FileName))
+		b.WriteString("```diff\n")
+		b.WriteString(hunkTrim(f))
+		b.WriteString("\n```\n\n")
+	}
+
+	writeJSONResponseFormat(&b)
+	return b.String()
+}
+
+// writeJSONResponseFormat 写入 JSON 响应格式说明（reused by both prompt builders）。
+func writeJSONResponseFormat(b *strings.Builder) {
+	b.WriteString("## Response Format\n\n")
+	b.WriteString("Output your review as a JSON object with this exact structure:\n\n")
 	b.WriteString("```json\n")
 	b.WriteString(`{
   "summary": "A 1-2 sentence summary of the overall changes",
@@ -59,10 +109,7 @@ func BuildReviewPrompt(prTitle string, files []diff.FileDiff) string {
 	b.WriteString("- If you find no issues, return an empty `issues` array.\n")
 	b.WriteString("- Be specific: include exact line numbers and concrete code suggestions.\n")
 	b.WriteString("- Focus on: correctness bugs > security > performance > style.\n")
-	b.WriteString("- Skip issues already addressed in the diff itself.\n")
 	b.WriteString("- Output ONLY the JSON object, no other text.\n")
-
-	return b.String()
 }
 
 // hunkTrim 去掉文件的 diff 中可能超长的部分。
