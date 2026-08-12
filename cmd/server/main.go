@@ -35,6 +35,7 @@ import (
 	"github.com/LingMi1/code-review-agent/internal/otel"
 	"github.com/LingMi1/code-review-agent/internal/prompt"
 	"github.com/LingMi1/code-review-agent/internal/review"
+	"github.com/LingMi1/code-review-agent/internal/sse"
 	"github.com/LingMi1/code-review-agent/internal/store"
 	"github.com/LingMi1/code-review-agent/internal/webhook"
 )
@@ -84,8 +85,14 @@ func main() {
 	}
 	defer db.Close()
 
+	// SSE hub — 实时推送审查进度
+	sseHub := sse.NewHub()
+
 	// PR 处理回调
 	onPR := func(event *webhook.PullRequestEvent) error {
+		// SSE session ID
+		sessionID := fmt.Sprintf("pr-review-%s/%d", event.RepoFullName, event.PRNumber)
+
 		// 创建根 span：整个 PR 审查流程
 		ctx, span := otel.StartSpan(context.Background(), "review.pr")
 		defer span.End()
@@ -99,6 +106,17 @@ func main() {
 			"head_sha", event.HeadSHA,
 		)
 
+		sseHub.Publish(sessionID, sse.Event{Type: "review.started", Data: fmt.Sprintf(`{"pr":%d,"status":"running"}`, event.PRNumber)})
+
+		// 统一处理失败事件
+		var resultErr error
+		defer func() {
+			if resultErr != nil {
+				sseHub.Publish(sessionID, sse.Event{Type: "review.failed", Data: fmt.Sprintf(
+					`{"pr":%d,"status":"failed","error":"%s"}`, event.PRNumber, resultErr.Error())})
+			}
+		}()
+
 		// 审计：webhook 已接收
 		db.AuditLog("webhook.received", event.PRNumber, event.RepoFullName, event.Action)
 
@@ -106,7 +124,8 @@ func main() {
 		reviewID, err := db.InsertReview(event.PRNumber, event.RepoFullName, event.HeadSHA)
 		if err != nil {
 			m.RecordFailure()
-			return fmt.Errorf("insert review record: %w", err)
+			resultErr = fmt.Errorf("insert review record: %w", err)
+			return resultErr
 		}
 		db.AuditLog("review.started", event.PRNumber, event.RepoFullName, fmt.Sprintf("review_id=%d", reviewID))
 
@@ -114,7 +133,8 @@ func main() {
 		parts := strings.SplitN(event.RepoFullName, "/", 2)
 		if len(parts) != 2 {
 			m.RecordFailure()
-			return fmt.Errorf("invalid repo: %s", event.RepoFullName)
+			resultErr = fmt.Errorf("invalid repo: %s", event.RepoFullName)
+			return resultErr
 		}
 		owner, repoName := parts[0], parts[1]
 
@@ -128,7 +148,8 @@ func main() {
 				db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
 				db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
 				m.RecordFailure()
-				return fmt.Errorf("fetch PR diff: %w", err)
+				resultErr = fmt.Errorf("fetch PR diff: %w", err)
+				return resultErr
 			}
 
 			// 4. 解析 diff → 按文件分块
@@ -152,6 +173,9 @@ func main() {
 				"files", len(files),
 				"chunks", len(chunks),
 			)
+
+			sseHub.Publish(sessionID, sse.Event{Type: "review.progress", Data: fmt.Sprintf(
+				`{"pr":%d,"status":"analyzing","files":%d,"chunks":%d}`, event.PRNumber, len(files), len(chunks))})
 
 			// 6. 构造 prompt
 			prTitle := fmt.Sprintf("%s#%d", event.RepoFullName, event.PRNumber)
@@ -180,7 +204,8 @@ func main() {
 				ghClient.PostIssueComment(ctx, owner, repoName, event.PRNumber,
 					"## AI Code Review\n\n**Agent temporarily unavailable.**\n\n> "+err.Error()+
 						"\n\n---\n*Powered by [agent-go](https://github.com/LingMi1/agent-go)*")
-				return fmt.Errorf("run review: %w", err)
+				resultErr = fmt.Errorf("run review: %w", err)
+				return resultErr
 			}
 
 			slog.InfoContext(ctx, "review completed",
@@ -196,7 +221,8 @@ func main() {
 				db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
 				m.RecordFailure()
 				postSpan.End()
-				return fmt.Errorf("post review: %w", err)
+				resultErr = fmt.Errorf("post review: %w", err)
+				return resultErr
 			}
 			postSpan.End()
 
@@ -207,6 +233,9 @@ func main() {
 				fmt.Sprintf("issues=%d duration=%s", issues, result.Duration))
 
 			m.RecordSuccess(result.Duration.Milliseconds(), len(result.Text), issues)
+
+			sseHub.Publish(sessionID, sse.Event{Type: "review.completed", Data: fmt.Sprintf(
+				`{"pr":%d,"status":"success","issues":%d,"duration_ms":%d}`, event.PRNumber, issues, result.Duration.Milliseconds())})
 
 			slog.InfoContext(ctx, "review posted to GitHub", "pr", event.PRNumber, "issues", issues)
 		}
@@ -224,8 +253,16 @@ func main() {
 	}))
 	mux.Handle("/metrics", m) // Prometheus 指标端点
 
-	// 审查历史 API
+	// SSE 端点：实时审查进度流
+	mux.Handle("/api/reviews/stream", sseHub)
+
+	// 审查历史 API（带 CORS 响应头）
 	mux.HandleFunc("/api/reviews", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		reviews, err := db.ListReviews(50)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -235,6 +272,11 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/reviews/", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		id := parseID(r.URL.Path, "/api/reviews/")
 		review, err := db.GetReview(int64(id))
 		if err != nil {

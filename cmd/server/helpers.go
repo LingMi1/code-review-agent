@@ -13,6 +13,13 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// enableCORS 为 API 响应添加 CORS 头。
+func enableCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Trace-ID")
+}
+
 // parseID 从 URL path 中提取数字 ID。
 func parseID(path, prefix string) int {
 	idStr := strings.TrimPrefix(path, prefix)

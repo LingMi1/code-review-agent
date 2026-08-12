@@ -15,3 +15,7 @@ data/
 # IDE
 .vscode/
 .idea/
+
+# Node
+web/node_modules/
+web/dist/
