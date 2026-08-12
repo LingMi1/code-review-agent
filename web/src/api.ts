@@ -17,6 +17,23 @@ const BASE = '/api';
 export async function fetchReviews(): Promise<ReviewRecord[]> {
   const res = await fetch(`${BASE}/reviews`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export interface TriggerRequest {
+  owner: string;
+  repo: string;
+  pr_number: number;
+}
+
+export async function triggerReview(req: TriggerRequest): Promise<{ review_id: number; status: string }> {
+  const res = await fetch(`${BASE}/reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 

@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -88,74 +89,63 @@ func main() {
 	// SSE hub — 实时推送审查进度
 	sseHub := sse.NewHub()
 
-	// PR 处理回调
-	onPR := func(event *webhook.PullRequestEvent) error {
-		// SSE session ID
-		sessionID := fmt.Sprintf("pr-review-%s/%d", event.RepoFullName, event.PRNumber)
+	// processReview 是审查核心逻辑，被 webhook 和手动 API 共享。
+	processReview := func(ctx context.Context, owner, repoName string, prNumber int, headSHA string) error {
+		repoFullName := owner + "/" + repoName
+		sessionID := fmt.Sprintf("pr-review-%s/%d", repoFullName, prNumber)
 
 		// 创建根 span：整个 PR 审查流程
-		ctx, span := otel.StartSpan(context.Background(), "review.pr")
+		ctx, span := otel.StartSpan(ctx, "review.pr")
 		defer span.End()
 
 		reviewStart := time.Now()
 
 		slog.InfoContext(ctx, "processing PR",
-			"pr", event.PRNumber,
-			"repo", event.RepoFullName,
-			"action", event.Action,
-			"head_sha", event.HeadSHA,
+			"pr", prNumber,
+			"repo", repoFullName,
+			"head_sha", headSHA,
 		)
 
-		sseHub.Publish(sessionID, sse.Event{Type: "review.started", Data: fmt.Sprintf(`{"pr":%d,"status":"running"}`, event.PRNumber)})
+		sseHub.Publish(sessionID, sse.Event{Type: "review.started", Data: fmt.Sprintf(`{"pr":%d,"status":"running"}`, prNumber)})
 
 		// 统一处理失败事件
 		var resultErr error
 		defer func() {
 			if resultErr != nil {
 				sseHub.Publish(sessionID, sse.Event{Type: "review.failed", Data: fmt.Sprintf(
-					`{"pr":%d,"status":"failed","error":"%s"}`, event.PRNumber, resultErr.Error())})
+					`{"pr":%d,"status":"failed","error":"%s"}`, prNumber, resultErr.Error())})
 			}
 		}()
 
-		// 审计：webhook 已接收
-		db.AuditLog("webhook.received", event.PRNumber, event.RepoFullName, event.Action)
+		// 审计
+		db.AuditLog("review.started", prNumber, repoFullName, "")
 
 		// 1. 创建审查记录
-		reviewID, err := db.InsertReview(event.PRNumber, event.RepoFullName, event.HeadSHA)
+		reviewID, err := db.InsertReview(prNumber, repoFullName, headSHA)
 		if err != nil {
 			m.RecordFailure()
 			resultErr = fmt.Errorf("insert review record: %w", err)
 			return resultErr
 		}
-		db.AuditLog("review.started", event.PRNumber, event.RepoFullName, fmt.Sprintf("review_id=%d", reviewID))
+		db.AuditLog("review.started", prNumber, repoFullName, fmt.Sprintf("review_id=%d", reviewID))
 
-		// 2. 解析 owner/repo
-		parts := strings.SplitN(event.RepoFullName, "/", 2)
-		if len(parts) != 2 {
-			m.RecordFailure()
-			resultErr = fmt.Errorf("invalid repo: %s", event.RepoFullName)
-			return resultErr
-		}
-		owner, repoName := parts[0], parts[1]
-
-		// 3. 获取 PR diff
+		// 2. 获取 PR diff
 		{
 			_, fetchSpan := otel.StartSpan(ctx, "github.fetch_diff")
-			slog.Info("fetching PR diff", "pr", event.PRNumber)
-			rawDiff, err := ghClient.PRDiff(ctx, owner, repoName, event.PRNumber)
+			slog.Info("fetching PR diff", "pr", prNumber)
+			rawDiff, err := ghClient.PRDiff(ctx, owner, repoName, prNumber)
 			fetchSpan.End()
 			if err != nil {
 				db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
-				db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
+				db.AuditLog("review.failed", prNumber, repoFullName, err.Error())
 				m.RecordFailure()
 				resultErr = fmt.Errorf("fetch PR diff: %w", err)
 				return resultErr
 			}
 
-			// 4. 解析 diff → 按文件分块
+			// 3. 解析 diff → 按文件分块
 			_, parseSpan := otel.StartSpan(ctx, "diff.parse")
-			// 5. 过滤生成文件 + Token 预算优化
-			allFiles := diff.Parse(rawDiff)        // 保留全量用于计算 PR size
+			allFiles := diff.Parse(rawDiff)
 			files := diff.SkipGeneratedFiles(allFiles)
 			files = diff.SkipLockFiles(files)
 			files = diff.SkipDataFiles(files)
@@ -164,8 +154,10 @@ func main() {
 			parseSpan.End()
 
 			if len(chunks) == 0 {
-				slog.InfoContext(ctx, "no files to review (all generated/skipped)", "pr", event.PRNumber)
+				slog.InfoContext(ctx, "no files to review (all generated/skipped)", "pr", prNumber)
 				db.UpdateReview(reviewID, "success", 0, "No reviewable files", "", "")
+				sseHub.Publish(sessionID, sse.Event{Type: "review.completed", Data: fmt.Sprintf(
+					`{"pr":%d,"status":"success","issues":0,"duration_ms":0}`, prNumber)})
 				return nil
 			}
 
@@ -174,7 +166,7 @@ func main() {
 			usePlanExecute := diff.ShouldUsePlanExecute(prSize)
 
 			slog.InfoContext(ctx, "diff parsed",
-				"pr", event.PRNumber,
+				"pr", prNumber,
 				"files", len(files),
 				"total_files", len(allFiles),
 				"chunks", len(chunks),
@@ -184,12 +176,12 @@ func main() {
 
 			sseHub.Publish(sessionID, sse.Event{Type: "review.progress", Data: fmt.Sprintf(
 				`{"pr":%d,"status":"analyzing","files":%d,"chunks":%d,"mode":"%s"}`,
-				event.PRNumber, len(files), len(chunks),
+				prNumber, len(files), len(chunks),
 				map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
 			)})
 
-			// 6. 构造 prompt（根据模式选择）
-			prTitle := fmt.Sprintf("%s#%d", event.RepoFullName, event.PRNumber)
+			// 4. 构造 prompt
+			prTitle := fmt.Sprintf("%s#%d", repoFullName, prNumber)
 			var reviewPrompt string
 			if usePlanExecute {
 				reviewPrompt = prompt.BuildPlanExecutePrompt(prTitle, files)
@@ -197,25 +189,24 @@ func main() {
 				reviewPrompt = prompt.BuildReviewPrompt(prTitle, files)
 			}
 
-			// Token 预算：截断过长 prompt（~8K tokens）
 			const maxPromptBytes = 32_000
 			reviewPrompt = prompt.TruncatePrompt(reviewPrompt, maxPromptBytes)
 
-			// 7. 调用 agent-go 认知面（智能路由）
+			// 5. 调用 agent-go 认知面
 			_, cognitionSpan := otel.StartSpan(ctx, "cognition.run_review")
 			slog.InfoContext(ctx, "calling agent-go cognition",
-				"pr", event.PRNumber,
+				"pr", prNumber,
 				"prompt_bytes", len(reviewPrompt),
 				"use_plan_execute", usePlanExecute,
 			)
 			var result *cognition.ReviewResult
 			if usePlanExecute {
 				result, err = cogClient.RunPlanExecuteReview(ctx,
-					fmt.Sprintf("pr-review-%s-%d", repoName, event.PRNumber),
+					fmt.Sprintf("pr-review-%s-%d", repoName, prNumber),
 					reviewPrompt, 8)
 			} else {
 				result, err = cogClient.RunReview(ctx, cognition.ReviewRequest{
-					SessionID: fmt.Sprintf("pr-review-%s-%d", repoName, event.PRNumber),
+					SessionID: fmt.Sprintf("pr-review-%s-%d", repoName, prNumber),
 					Query:     reviewPrompt,
 					AgentType: "react",
 					MaxSteps:  5,
@@ -224,28 +215,24 @@ func main() {
 			cognitionSpan.End()
 			if err != nil {
 				db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
-				db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
+				db.AuditLog("review.failed", prNumber, repoFullName, err.Error())
 				m.RecordCognitionError()
 				m.RecordFailure()
-				// 降级：发一条 comment 说明 Agent 暂时不可用
-				ghClient.PostIssueComment(ctx, owner, repoName, event.PRNumber,
-					"## AI Code Review\n\n**Agent temporarily unavailable.**\n\n> "+err.Error()+
-						"\n\n---\n*Powered by [agent-go](https://github.com/LingMi1/agent-go)*")
 				resultErr = fmt.Errorf("run review: %w", err)
 				return resultErr
 			}
 
 			slog.InfoContext(ctx, "review completed",
-				"pr", event.PRNumber,
+				"pr", prNumber,
 				"duration", result.Duration,
 				"output_chars", len(result.Text),
 			)
 
-			// 8. 解析结果 + 投递到 GitHub
+			// 6. 解析结果 + 投递到 GitHub（如果有 headSHA）
 			_, postSpan := otel.StartSpan(ctx, "github.post_review")
-			if err := review.ParseAndPost(ctx, ghClient, owner, repoName, event.PRNumber, event.HeadSHA, result.Text); err != nil {
+			if err := review.ParseAndPost(ctx, ghClient, owner, repoName, prNumber, headSHA, result.Text); err != nil {
 				db.UpdateReview(reviewID, "failed", 0, "", result.Duration.String(), err.Error())
-				db.AuditLog("review.failed", event.PRNumber, event.RepoFullName, err.Error())
+				db.AuditLog("review.failed", prNumber, repoFullName, err.Error())
 				m.RecordFailure()
 				postSpan.End()
 				resultErr = fmt.Errorf("post review: %w", err)
@@ -253,21 +240,31 @@ func main() {
 			}
 			postSpan.End()
 
-			// 9. 更新审查记录
+			// 7. 更新审查记录
 			issues := parseIssueCount(result.Text)
 			db.UpdateReview(reviewID, "success", issues, parseSummary(result.Text), result.Duration.String(), "")
-			db.AuditLog("review.completed", event.PRNumber, event.RepoFullName,
+			db.AuditLog("review.completed", prNumber, repoFullName,
 				fmt.Sprintf("issues=%d duration=%s", issues, result.Duration))
 
 			m.RecordSuccess(result.Duration.Milliseconds(), len(result.Text), issues)
 
 			sseHub.Publish(sessionID, sse.Event{Type: "review.completed", Data: fmt.Sprintf(
-				`{"pr":%d,"status":"success","issues":%d,"duration_ms":%d}`, event.PRNumber, issues, result.Duration.Milliseconds())})
+				`{"pr":%d,"status":"success","issues":%d,"duration_ms":%d}`, prNumber, issues, result.Duration.Milliseconds())})
 
-			slog.InfoContext(ctx, "review posted to GitHub", "pr", event.PRNumber, "issues", issues)
+			slog.InfoContext(ctx, "review posted to GitHub", "pr", prNumber, "issues", issues)
 		}
 		slog.InfoContext(ctx, "review total duration", "ms", time.Since(reviewStart).Milliseconds())
 		return nil
+	}
+
+	// webhook 回调：从 webhook event 提取参数后调用 processReview
+	onPR := func(event *webhook.PullRequestEvent) error {
+		parts := strings.SplitN(event.RepoFullName, "/", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid repo: %s", event.RepoFullName)
+		}
+		db.AuditLog("webhook.received", event.PRNumber, event.RepoFullName, event.Action)
+		return processReview(context.Background(), parts[0], parts[1], event.PRNumber, event.HeadSHA)
 	}
 
 	// HTTP server
@@ -283,13 +280,50 @@ func main() {
 	// SSE 端点：实时审查进度流
 	mux.Handle("/api/reviews/stream", sseHub)
 
-	// 审查历史 API（带 CORS 响应头）
+	// 审查 API（带 CORS 响应头）
+	// GET  /api/reviews        → 列表
+	// POST /api/reviews        → 手动触发审查 {owner, repo, pr_number}
 	mux.HandleFunc("/api/reviews", func(w http.ResponseWriter, r *http.Request) {
 		enableCORS(w)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		if r.Method == http.MethodPost {
+			// 手动触发审查
+			var req struct {
+				Owner    string `json:"owner"`
+				Repo     string `json:"repo"`
+				PRNumber int    `json:"pr_number"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "invalid JSON body", http.StatusBadRequest)
+				return
+			}
+			if req.Owner == "" || req.Repo == "" || req.PRNumber <= 0 {
+				http.Error(w, "owner, repo, pr_number are required", http.StatusBadRequest)
+				return
+			}
+			slog.Info("manual review trigger",
+				"owner", req.Owner,
+				"repo", req.Repo,
+				"pr", req.PRNumber,
+			)
+			// 异步处理，立即返回 review ID
+			db.AuditLog("manual.trigger", req.PRNumber, req.Owner+"/"+req.Repo, "")
+			reviewID, err := db.InsertReview(req.PRNumber, req.Owner+"/"+req.Repo, "")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			go processReview(context.Background(), req.Owner, req.Repo, req.PRNumber, "")
+			writeJSON(w, map[string]interface{}{
+				"review_id": reviewID,
+				"status":    "started",
+			})
+			return
+		}
+		// GET: 列表
 		reviews, err := db.ListReviews(50)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
