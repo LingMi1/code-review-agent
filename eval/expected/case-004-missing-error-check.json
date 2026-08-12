@@ -1,0 +1,14 @@
+{
+  "case_id": "case-004",
+  "should_reject": false,
+  "issues": [
+    {
+      "file": "file_handler.go",
+      "line_start": 32,
+      "line_end": 35,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Error from ReadAll ignored with blank identifier"
+    }
+  ]
+}

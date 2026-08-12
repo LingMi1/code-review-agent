@@ -1,0 +1,7 @@
+{
+  "id": "case-003",
+  "name": "Unclosed File Handle",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/file_handler.go b/file_handler.go\nnew file mode 100644\n--- /dev/null\n+++ b/file_handler.go\n@@ -28,0 +31,6 @@\n+\n+func readConfig(path string) ([]byte, error) {\n+\tfile, err := os.Open(path)\n+\tif err != nil {\n+\t\treturn nil, err\n+\t}\n+\treturn ioutil.ReadAll(file)\n+}\n"
+}

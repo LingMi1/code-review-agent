@@ -1,0 +1,14 @@
+{
+  "case_id": "case-001",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "user_handler.go",
+      "line_start": 42,
+      "line_end": 43,
+      "severity": "high",
+      "category": "security",
+      "title": "SQL injection vulnerability"
+    }
+  ]
+}

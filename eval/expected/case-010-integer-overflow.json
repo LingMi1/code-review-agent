@@ -1,0 +1,14 @@
+{
+  "case_id": "case-010",
+  "should_reject": false,
+  "issues": [
+    {
+      "file": "math.go",
+      "line_start": 6,
+      "line_end": 7,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Integer overflow check is incorrect"
+    }
+  ]
+}

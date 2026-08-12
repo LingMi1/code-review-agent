@@ -1,0 +1,14 @@
+{
+  "case_id": "case-013",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "logger.go",
+      "line_start": 7,
+      "line_end": 9,
+      "severity": "medium",
+      "category": "security",
+      "title": "Logging sensitive password data"
+    }
+  ]
+}

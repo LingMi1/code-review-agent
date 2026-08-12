@@ -1,0 +1,14 @@
+{
+  "case_id": "case-007",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "executor.go",
+      "line_start": 11,
+      "line_end": 13,
+      "severity": "high",
+      "category": "security",
+      "title": "Command injection via user input"
+    }
+  ]
+}

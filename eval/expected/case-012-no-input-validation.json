@@ -1,0 +1,14 @@
+{
+  "case_id": "case-012",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "handler.go",
+      "line_start": 19,
+      "line_end": 22,
+      "severity": "medium",
+      "category": "security",
+      "title": "No input validation on email and password"
+    }
+  ]
+}

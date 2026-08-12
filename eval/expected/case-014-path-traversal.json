@@ -1,0 +1,14 @@
+{
+  "case_id": "case-014",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "upload.go",
+      "line_start": 12,
+      "line_end": 15,
+      "severity": "high",
+      "category": "security",
+      "title": "Path traversal via unsanitized filename"
+    }
+  ]
+}

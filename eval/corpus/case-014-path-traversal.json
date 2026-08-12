@@ -1,0 +1,7 @@
+{
+  "id": "case-014",
+  "name": "Path Traversal",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/upload.go b/upload.go\nnew file mode 100644\n--- /dev/null\n+++ b/upload.go\n@@ -10,0 +12,10 @@\n+\n+func saveFile(filename string, data []byte) error {\n+\tbasePath := \"/var/uploads\"\n+\tfullPath := filepath.Join(basePath, filename)\n+\tos.WriteFile(fullPath, data, 0644)\n+\treturn nil\n+}\n"
+}

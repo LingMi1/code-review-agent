@@ -1,0 +1,7 @@
+{
+  "id": "case-009",
+  "name": "Infinite Loop",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/loop.go b/loop.go\nnew file mode 100644\n--- /dev/null\n+++ b/loop.go\n@@ -3,0 +5,8 @@\n+\n+func processQueue(items chan string) {\n+\tfor {\n+\t\titem := <-items\n+\t\tfmt.Println(item)\n+\t}\n+}\n"
+}

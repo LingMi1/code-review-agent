@@ -1,0 +1,7 @@
+{
+  "id": "case-006",
+  "name": "XSS — innerHTML assignment",
+  "category": "security",
+  "language": "javascript",
+  "diff": "diff --git a/render.js b/render.js\nnew file mode 100644\n--- /dev/null\n+++ b/render.js\n@@ -23,0 +25,6 @@\n+\n+function displayComment(userInput) {\n+\tconst div = document.getElementById('comments');\n+\tdiv.innerHTML = userInput;\n+}\n"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "case-013",
+  "name": "Logging Sensitive Data",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/logger.go b/logger.go\nnew file mode 100644\n--- /dev/null\n+++ b/logger.go\n@@ -5,0 +7,8 @@\n+\n+func login(db *sql.DB, username, password string) error {\n+\tlog.Printf(\"Login attempt: user=%s pass=%s\", username, password)\n+\trow := db.QueryRow(\"SELECT id FROM users WHERE name=? AND password=?\", username, password)\n+\treturn row.Scan()\n+}\n"
+}

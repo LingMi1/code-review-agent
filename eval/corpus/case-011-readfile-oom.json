@@ -1,0 +1,7 @@
+{
+  "id": "case-011",
+  "name": "ReadFile Without Size Limit",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/reader.go b/reader.go\nnew file mode 100644\n--- /dev/null\n+++ b/reader.go\n@@ -5,0 +8,6 @@\n+\n+func loadFile(path string) ([]byte, error) {\n+\treturn ioutil.ReadFile(path)\n+}\n"
+}

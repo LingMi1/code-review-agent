@@ -1,0 +1,14 @@
+{
+  "case_id": "case-006",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "render.js",
+      "line_start": 27,
+      "line_end": 28,
+      "severity": "high",
+      "category": "security",
+      "title": "XSS vulnerability via innerHTML"
+    }
+  ]
+}

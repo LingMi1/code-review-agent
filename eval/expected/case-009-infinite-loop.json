@@ -1,0 +1,14 @@
+{
+  "case_id": "case-009",
+  "should_reject": false,
+  "issues": [
+    {
+      "file": "loop.go",
+      "line_start": 6,
+      "line_end": 10,
+      "severity": "high",
+      "category": "bug",
+      "title": "Infinite for loop without exit condition"
+    }
+  ]
+}

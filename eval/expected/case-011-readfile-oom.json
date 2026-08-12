@@ -1,0 +1,14 @@
+{
+  "case_id": "case-011",
+  "should_reject": false,
+  "issues": [
+    {
+      "file": "reader.go",
+      "line_start": 8,
+      "line_end": 10,
+      "severity": "medium",
+      "category": "bug",
+      "title": "ReadFile without size limit could cause OOM"
+    }
+  ]
+}

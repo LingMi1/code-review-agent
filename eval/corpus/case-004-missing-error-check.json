@@ -1,0 +1,7 @@
+{
+  "id": "case-004",
+  "name": "Missing Error Handling",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/file_handler.go b/file_handler.go\n--- a/file_handler.go\n+++ b/file_handler.go\n@@ -30,5 +30,8 @@\n func readConfig(path string) ([]byte, error) {\n \tfile, err := os.Open(path)\n+\tdefer file.Close()\n+\tdata, _ := ioutil.ReadAll(file)\n+\tfile.Close()\n-\treturn nil, err\n+\treturn data, nil\n }\n"
+}

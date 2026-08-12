@@ -1,0 +1,14 @@
+{
+  "case_id": "case-005",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "worker.go",
+      "line_start": 55,
+      "line_end": 60,
+      "severity": "high",
+      "category": "bug",
+      "title": "Race condition on shared counter variable"
+    }
+  ]
+}

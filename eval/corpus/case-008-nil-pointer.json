@@ -1,0 +1,7 @@
+{
+  "id": "case-008",
+  "name": "Nil Pointer Dereference",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/service.go b/service.go\nnew file mode 100644\n--- /dev/null\n+++ b/service.go\n@@ -15,0 +17,10 @@\n+\n+func getUserEmail(userID int) string {\n+\tuser := findUser(userID)\n+\tif user == nil {\n+\t\treturn \"\"\n+\t}\n+\treturn user.Email\n+\t// Potential: findUser may return nil without error\n+}\n"
+}

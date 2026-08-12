@@ -1,0 +1,7 @@
+{
+  "id": "case-012",
+  "name": "Missing Input Validation",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/handler.go b/handler.go\nnew file mode 100644\n--- /dev/null\n+++ b/handler.go\n@@ -15,0 +17,8 @@\n+\n+func createAccount(w http.ResponseWriter, r *http.Request) {\n+\temail := r.FormValue(\"email\")\n+\tpassword := r.FormValue(\"password\")\n+\tdb.Exec(\"INSERT INTO users (email, password) VALUES (?, ?)\", email, password)\n+}\n"
+}

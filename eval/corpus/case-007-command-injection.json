@@ -1,0 +1,7 @@
+{
+  "id": "case-007",
+  "name": "Command Injection — os.Exec",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/executor.go b/executor.go\nnew file mode 100644\n--- /dev/null\n+++ b/executor.go\n@@ -8,0 +10,8 @@\n+\n+func runScript(userInput string) error {\n+\tcmd := os.Exec(\"bash\", \"-c\", \"echo \"+userInput)\n+\tcmd.Run()\n+\treturn nil\n+}\n"
+}

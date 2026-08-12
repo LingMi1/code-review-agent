@@ -1,0 +1,14 @@
+{
+  "case_id": "case-008",
+  "should_reject": false,
+  "issues": [
+    {
+      "file": "service.go",
+      "line_start": 19,
+      "line_end": 25,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Nil pointer dereference if findUser returns nil"
+    }
+  ]
+}

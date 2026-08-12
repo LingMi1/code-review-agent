@@ -1,0 +1,7 @@
+{
+  "id": "case-010",
+  "name": "Potential Integer Overflow",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/math.go b/math.go\nnew file mode 100644\n--- /dev/null\n+++ b/math.go\n@@ -1,0 +5,10 @@\n+\n+func multiply(a, b int) int {\n+\tresult := a * b\n+\tif result < 0 {\n+\t\treturn 0\n+\t}\n+\treturn result\n+}\n"
+}

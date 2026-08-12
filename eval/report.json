@@ -1,0 +1,438 @@
+{
+  "total_cases": 15,
+  "passed_cases": 7,
+  "pass_rate": 0.4666666666666667,
+  "macro_precision": 0.3888888888888889,
+  "macro_recall": 0.4666666666666667,
+  "macro_f1": 0.42424242424242425,
+  "micro_precision": 0.7,
+  "micro_recall": 1,
+  "micro_f1": 0.8235294117647058,
+  "results": [
+    {
+      "case_id": "case-001",
+      "case_name": "SQL Injection — raw string concatenation",
+      "category": "security",
+      "passed": true,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "expected_count": 1,
+      "found_count": 1,
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "matched_issues": [
+        {
+          "file": "user_handler.go",
+          "line": 43,
+          "severity": "high",
+          "category": "security",
+          "title": "SQL injection vulnerability",
+          "exact": true
+        }
+      ],
+      "unmatched_issues": null,
+      "missed_issues": null
+    },
+    {
+      "case_id": "case-002",
+      "case_name": "Hardcoded Password in Config",
+      "category": "security",
+      "passed": false,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "expected_count": 1,
+      "found_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "matched_issues": null,
+      "unmatched_issues": null,
+      "missed_issues": [
+        {
+          "file": "config.go",
+          "line_start": 12,
+          "line_end": 13,
+          "severity": "high",
+          "category": "security",
+          "title": "Hardcoded password in config"
+        }
+      ]
+    },
+    {
+      "case_id": "case-003",
+      "case_name": "Unclosed File Handle",
+      "category": "bug",
+      "passed": true,
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "f1": 0.5,
+      "expected_count": 1,
+      "found_count": 3,
+      "true_positives": 1,
+      "false_positives": 2,
+      "false_negatives": 0,
+      "matched_issues": [
+        {
+          "file": "file_handler.go",
+          "line": 31,
+          "severity": "medium",
+          "category": "bug",
+          "title": "File opened without deferred close",
+          "exact": true
+        }
+      ],
+      "unmatched_issues": [
+        {
+          "file": "file_handler.go",
+          "line": 32,
+          "severity": "medium",
+          "category": "bug",
+          "title": "Potential unclosed file handle",
+          "exact": false
+        },
+        {
+          "file": "file_handler.go",
+          "line": 35,
+          "severity": "low",
+          "category": "style",
+          "title": "Missing error handling",
+          "exact": false
+        }
+      ],
+      "missed_issues": null
+    },
+    {
+      "case_id": "case-004",
+      "case_name": "Missing Error Handling",
+      "category": "bug",
+      "passed": true,
+      "precision": 0.5,
+      "recall": 1,
+      "f1": 0.6666666666666666,
+      "expected_count": 1,
+      "found_count": 2,
+      "true_positives": 1,
+      "false_positives": 1,
+      "false_negatives": 0,
+      "matched_issues": [
+        {
+          "file": "file_handler.go",
+          "line": 32,
+          "severity": "medium",
+          "category": "bug",
+          "title": "Potential unclosed file handle",
+          "exact": true
+        }
+      ],
+      "unmatched_issues": [
+        {
+          "file": "file_handler.go",
+          "line": 31,
+          "severity": "medium",
+          "category": "bug",
+          "title": "File opened without deferred close",
+          "exact": false
+        }
+      ],
+      "missed_issues": null
+    },
+    {
+      "case_id": "case-005",
+      "case_name": "Race Condition in Goroutine",
+      "category": "bug",
+      "passed": true,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "expected_count": 1,
+      "found_count": 1,
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "matched_issues": [
+        {
+          "file": "worker.go",
+          "line": 56,
+          "severity": "high",
+          "category": "bug",
+          "title": "Race condition risk in goroutine",
+          "exact": true
+        }
+      ],
+      "unmatched_issues": null,
+      "missed_issues": null
+    },
+    {
+      "case_id": "case-006",
+      "case_name": "XSS — innerHTML assignment",
+      "category": "security",
+      "passed": false,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "expected_count": 1,
+      "found_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "matched_issues": null,
+      "unmatched_issues": [
+        {
+          "file": "render.go",
+          "line": 26,
+          "severity": "high",
+          "category": "security",
+          "title": "innerHTML XSS vulnerability",
+          "exact": false
+        }
+      ],
+      "missed_issues": [
+        {
+          "file": "render.js",
+          "line_start": 27,
+          "line_end": 28,
+          "severity": "high",
+          "category": "security",
+          "title": "XSS vulnerability via innerHTML"
+        }
+      ]
+    },
+    {
+      "case_id": "case-007",
+      "case_name": "Command Injection — os.Exec",
+      "category": "security",
+      "passed": true,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "expected_count": 1,
+      "found_count": 1,
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "matched_issues": [
+        {
+          "file": "executor.go",
+          "line": 11,
+          "severity": "high",
+          "category": "security",
+          "title": "Command injection via os.Exec",
+          "exact": true
+        }
+      ],
+      "unmatched_issues": null,
+      "missed_issues": null
+    },
+    {
+      "case_id": "case-008",
+      "case_name": "Nil Pointer Dereference",
+      "category": "bug",
+      "passed": false,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "expected_count": 1,
+      "found_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "matched_issues": null,
+      "unmatched_issues": null,
+      "missed_issues": [
+        {
+          "file": "service.go",
+          "line_start": 19,
+          "line_end": 25,
+          "severity": "medium",
+          "category": "bug",
+          "title": "Nil pointer dereference if findUser returns nil"
+        }
+      ]
+    },
+    {
+      "case_id": "case-009",
+      "case_name": "Infinite Loop",
+      "category": "bug",
+      "passed": true,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "expected_count": 1,
+      "found_count": 1,
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "matched_issues": [
+        {
+          "file": "loop.go",
+          "line": 6,
+          "severity": "high",
+          "category": "bug",
+          "title": "Infinite loop without break condition",
+          "exact": true
+        }
+      ],
+      "unmatched_issues": null,
+      "missed_issues": null
+    },
+    {
+      "case_id": "case-010",
+      "case_name": "Potential Integer Overflow",
+      "category": "bug",
+      "passed": false,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "expected_count": 1,
+      "found_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "matched_issues": null,
+      "unmatched_issues": null,
+      "missed_issues": [
+        {
+          "file": "math.go",
+          "line_start": 6,
+          "line_end": 7,
+          "severity": "medium",
+          "category": "bug",
+          "title": "Integer overflow check is incorrect"
+        }
+      ]
+    },
+    {
+      "case_id": "case-011",
+      "case_name": "ReadFile Without Size Limit",
+      "category": "bug",
+      "passed": true,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "expected_count": 1,
+      "found_count": 1,
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "matched_issues": [
+        {
+          "file": "reader.go",
+          "line": 9,
+          "severity": "medium",
+          "category": "bug",
+          "title": "ReadFile without size limit",
+          "exact": true
+        }
+      ],
+      "unmatched_issues": null,
+      "missed_issues": null
+    },
+    {
+      "case_id": "case-012",
+      "case_name": "Missing Input Validation",
+      "category": "security",
+      "passed": false,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "expected_count": 1,
+      "found_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "matched_issues": null,
+      "unmatched_issues": null,
+      "missed_issues": [
+        {
+          "file": "handler.go",
+          "line_start": 19,
+          "line_end": 22,
+          "severity": "medium",
+          "category": "security",
+          "title": "No input validation on email and password"
+        }
+      ]
+    },
+    {
+      "case_id": "case-013",
+      "case_name": "Logging Sensitive Data",
+      "category": "security",
+      "passed": false,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "expected_count": 1,
+      "found_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "matched_issues": null,
+      "unmatched_issues": null,
+      "missed_issues": [
+        {
+          "file": "logger.go",
+          "line_start": 7,
+          "line_end": 9,
+          "severity": "medium",
+          "category": "security",
+          "title": "Logging sensitive password data"
+        }
+      ]
+    },
+    {
+      "case_id": "case-014",
+      "case_name": "Path Traversal",
+      "category": "security",
+      "passed": false,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "expected_count": 1,
+      "found_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "matched_issues": null,
+      "unmatched_issues": null,
+      "missed_issues": [
+        {
+          "file": "upload.go",
+          "line_start": 12,
+          "line_end": 15,
+          "severity": "high",
+          "category": "security",
+          "title": "Path traversal via unsanitized filename"
+        }
+      ]
+    },
+    {
+      "case_id": "case-015",
+      "case_name": "Plaintext Password Storage",
+      "category": "security",
+      "passed": false,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "expected_count": 1,
+      "found_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "matched_issues": null,
+      "unmatched_issues": null,
+      "missed_issues": [
+        {
+          "file": "handler.go",
+          "line_start": 15,
+          "line_end": 20,
+          "severity": "medium",
+          "category": "bug",
+          "title": "Plaintext password storage without hashing"
+        }
+      ]
+    }
+  ]
+}

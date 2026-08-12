@@ -1,0 +1,7 @@
+{
+  "id": "case-005",
+  "name": "Race Condition in Goroutine",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/worker.go b/worker.go\nnew file mode 100644\n--- /dev/null\n+++ b/worker.go\n@@ -53,0 +55,13 @@\n+\n+var counter int\n+\n+func incrementParallel(n int) {\n+\tfor i := 0; i < n; i++ {\n+\t\tgo func() {\n+\t\t\tcounter++\n+\t\t}()\n+\t}\n+}\n"
+}
