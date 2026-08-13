@@ -89,20 +89,21 @@ func parseResult(text string) (*ReviewOutput, error) {
 
 // extractJSONBlock 从文本中提取第一个 ```json ... ``` 代码块。
 func extractJSONBlock(text string) string {
-	start := strings.Index(text, "```json")
-	if start == -1 {
-		start = strings.Index(text, "```")
+	marker := strings.Index(text, "```json")
+	if marker == -1 {
+		marker = strings.Index(text, "```")
 	}
-	if start == -1 {
+	if marker == -1 {
 		return ""
 	}
 
-	// 跳过 ```json 或 ``` 标记
-	start = strings.Index(text[start:], "\n")
-	if start == -1 {
+	// 跳过 marker 行末尾的换行符，定位 JSON 内容起点。
+	// 注意：nl 是相对于 text[marker:] 的偏移，需加回 marker 才是绝对位置。
+	nl := strings.Index(text[marker:], "\n")
+	if nl == -1 {
 		return ""
 	}
-	text = text[start+1:]
+	text = text[marker+nl+1:]
 
 	end := strings.Index(text, "```")
 	if end == -1 {
