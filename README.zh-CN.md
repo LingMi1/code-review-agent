@@ -1,6 +1,6 @@
 # Code Review Agent
 
-AI 驱动的代码审查，自动发现 PR 中的 bug、安全漏洞和性能问题 —— **由 [agent-go](https://github.com/LingMi1/agent-go) 提供认知能力**，一个生产级的多 Agent 平台。
+AI 代码审查工具，自动找出 PR 里的 bug、安全漏洞和性能问题。认知能力**完全由生产级多 Agent 平台 [agent-go](https://github.com/LingMi1/agent-go) 提供**，本仓库不内置任何 LLM SDK。
 
 > [English](README.md)
 
@@ -43,22 +43,22 @@ GitHub PR webhook / 手动触发
 
 ## 功能特性
 
-### 核心链路
+### 核心流程
 
 - **真实 PR 处理**：处理 `opened`、`synchronize`、`reopened` 三类 PR 事件
 - **HMAC-SHA256 Webhook 验签**：防止伪造请求
 - **增量 Diff 分块**：大 PR 按文件拆分，控制 Token 预算
-- **结构化 JSON 输出**：LLM 返回可机读的审查结果（文件/行号/严重级/类别/建议）
+- **结构化 JSON 输出**：LLM 返回可被程序解析的审查结果（文件/行号/严重级/类别/建议）
 - **优雅降级**：JSON 解析失败时回退为纯文本评论
-- **GitHub API 限流处理**：尊重 `Retry-After` 响应头并自动重试
+- **GitHub API 限流处理**：遵循 `Retry-After` 响应头自动重试
 - **去重**：基于 webhook delivery-id 去重，防止重复审查
 - **生成文件过滤**：跳过 lockfile、protobuf stub、vendor 目录、二进制文件
 - **审计日志**：每次审查操作带时间戳记录
-- **由 agent-go 驱动**：本仓库零 LLM SDK —— 所有认知能力通过 gRPC 委托给 agent-go
+- **由 agent-go 驱动**：本仓库不含任何 LLM SDK —— 认知能力全部通过 gRPC 交给 agent-go 完成
 
 ### 成本控制
 
-- **Token 预算强制**：按文件和按 PR 的 Token 上限，防止成本失控
+- **Token 预算上限**：按文件和按 PR 设 Token 上限，防止成本失控
 - **智能模型路由**：小 PR 用便宜模型，大/复杂 PR 升级到更强模型
 - **Diff 截断**：超长 hunk 在构造 prompt 前裁剪
 
@@ -69,10 +69,10 @@ GitHub PR webhook / 手动触发
 ### 可观测性
 
 - **OpenTelemetry**：跨 Go → gRPC → agent-go 认知面的分布式追踪
-- **Prometheus**：`/metrics` 端点暴露审查数量、延迟、错误率
+- **Prometheus**：`/metrics` 端点对外提供审查数量、延迟、错误率
 - **结构化日志**：`log/slog` 带请求级字段
 
-### 前端面板
+### 前端界面
 
 - **React + TypeScript + Vite**：审查列表页和详情页
 - **SSE 实时流**：通过 `/api/reviews/stream` 实时展示 Agent 思考过程
@@ -186,7 +186,7 @@ code-review-agent/
 
 ## gRPC 集成
 
-本项目通过 agent-go 认知面的公开 RPC `CognitionService.Run`（server-streaming）消费认知能力：
+本项目通过 agent-go 认知面的公开 RPC `CognitionService.Run`（server-streaming）获取认知能力：
 
 ```go
 // 来自 internal/cognition/client.go
