@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/LingMi1/code-review-agent/internal/sse"
 )
 
 // writeJSON 写入 JSON 响应。
@@ -59,15 +57,6 @@ func parseID(path, prefix string) int {
 	idStr = strings.TrimSuffix(idStr, "/")
 	id, _ := strconv.Atoi(idStr)
 	return id
-}
-
-// sseEvent 构造一条 SSE 事件，data 用 JSON 序列化以避免手工拼接导致的转义问题。
-func sseEvent(typ string, v any) sse.Event {
-	b, err := json.Marshal(v)
-	if err != nil {
-		b = []byte("{}")
-	}
-	return sse.Event{Type: typ, Data: string(b)}
 }
 
 // authorizeManualTrigger 校验手动触发请求的 API token。

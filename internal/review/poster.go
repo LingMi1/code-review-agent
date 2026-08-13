@@ -36,9 +36,15 @@ type PostResult struct {
 	Summary string // 审查摘要
 }
 
+// Poster 是审查结果投递所需的 GitHub 操作子集。
+type Poster interface {
+	PostReview(ctx context.Context, owner, repo string, prNumber int, headSHA string, body string, comments []github.ReviewComment) error
+	PostIssueComment(ctx context.Context, owner, repo string, prNumber int, body string) error
+}
+
 // ParseAndPost 解析 Agent 的审查结果并投递到 GitHub PR。
 // 返回结构化结果（问题数 + 摘要），避免上层再次解析文本。
-func ParseAndPost(ctx context.Context, gh *github.Client, owner, repo string, prNumber int, headSHA string, resultText string) (*PostResult, error) {
+func ParseAndPost(ctx context.Context, gh Poster, owner, repo string, prNumber int, headSHA string, resultText string) (*PostResult, error) {
 	review, err := parseResult(resultText)
 	if err != nil {
 		// JSON 解析失败 → 降级为纯文本 comment

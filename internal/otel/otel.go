@@ -1,139 +1,76 @@
-// Package otel 提供轻量级链路追踪：trace_id 和 span_id 的 Context 传播。
+// Package otel 基于 OpenTelemetry Go SDK 提供分布式追踪。
 //
-// 生产环境建议替换为 OpenTelemetry Go SDK（go.opentelemetry.io/otel），
-// 并将 trace_id 注入 gRPC metadata 和 HTTP header。
+// 使用标准 W3C Trace Context 在 HTTP / gRPC 之间传播，可通过 OTLP 导出到
+// Jaeger、Tempo 等后端。未配置 OTEL_EXPORTER_OTLP_ENDPOINT 时，仅在进程内
+// 记录 span 并注入日志（trace_id / span_id），不导出。
 package otel
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"log/slog"
-	"sync"
-	"time"
+	"os"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
-type contextKey string
+const serviceName = "code-review-agent"
 
-const (
-	keyTraceID contextKey = "otel.trace_id"
-	keySpanID  contextKey = "otel.span_id"
-)
+// Init 初始化 OpenTelemetry TracerProvider 与跨进程传播器。
+// 返回 shutdown 函数用于优雅关闭。
+func Init(ctx context.Context) (func(context.Context) error, error) {
+	opts := []sdktrace.TracerProviderOption{
+		sdktrace.WithResource(resource.Default()),
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+	}
 
-// Span 代表一个操作段。
-type Span struct {
-	Name     string
-	TraceID  string
-	SpanID   string
-	ParentID string
-	Start    time.Time
-	end      time.Time
-	mu       sync.Mutex
-	ended    bool
+	// 配置了 OTLP endpoint 才导出到 collector，否则仅进程内记录。
+	if endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); endpoint != "" {
+		exp, err := otlptracegrpc.New(ctx,
+			otlptracegrpc.WithEndpoint(endpoint),
+			otlptracegrpc.WithInsecure(),
+		)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, sdktrace.WithBatcher(exp))
+	}
+
+	tp := sdktrace.NewTracerProvider(opts...)
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+	return tp.Shutdown, nil
 }
 
-// NewTrace 在当前 context 中注入一个新 trace，返回新 context 和 span。
-// span 必须通过 span.End() 关闭以记录耗时。
-func StartSpan(ctx context.Context, name string) (context.Context, *Span) {
-	traceID := traceIDFromCtx(ctx)
-	if traceID == "" {
-		traceID = newID()
-	}
-
-	spanID := newID()
-	parentID := ""
-	if parent := spanFromCtx(ctx); parent != nil {
-		parentID = parent.SpanID
-	}
-
-	span := &Span{
-		Name:     name,
-		TraceID:  traceID,
-		SpanID:   spanID,
-		ParentID: parentID,
-		Start:    time.Now(),
-	}
-
-	slog.Debug("otel: span start",
-		"trace_id", traceID,
-		"span_id", spanID,
-		"parent_id", parentID,
-		"name", name,
-	)
-
-	ctx = context.WithValue(ctx, keyTraceID, traceID)
-	ctx = context.WithValue(ctx, keySpanID, span)
-	return ctx, span
+// StartSpan 创建一个 span 并注入 context。
+func StartSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	return otel.Tracer(serviceName).Start(ctx, name)
 }
 
-// End 标记 span 结束。
-func (s *Span) End() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.ended {
-		return
-	}
-	s.ended = true
-	s.end = time.Now()
-
-	slog.Debug("otel: span end",
-		"trace_id", s.TraceID,
-		"span_id", s.SpanID,
-		"name", s.Name,
-		"duration_ms", s.end.Sub(s.Start).Milliseconds(),
-	)
-}
-
-// Duration 返回 span 耗时。
-func (s *Span) Duration() time.Duration {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.ended {
-		return s.end.Sub(s.Start)
-	}
-	return time.Since(s.Start)
-}
-
-// TraceID 从 ctx 中提取 trace_id。如果不存在返回空字符串。
+// TraceID 从 ctx 提取 trace_id 字符串（W3C 32 位 hex）。
 func TraceID(ctx context.Context) string {
-	return traceIDFromCtx(ctx)
-}
-
-// SlogAttr 返回 slog 属性对 (trace_id, span_id)，用于日志行。
-func SlogAttr(ctx context.Context) []slog.Attr {
-	traceID := traceIDFromCtx(ctx)
-	span := spanFromCtx(ctx)
-	if traceID == "" && span == nil {
-		return nil
-	}
-	attrs := []slog.Attr{}
-	if traceID != "" {
-		attrs = append(attrs, slog.String("trace_id", traceID))
-	}
-	if span != nil {
-		attrs = append(attrs, slog.String("span_id", span.SpanID))
-	}
-	return attrs
-}
-
-// --- 内部函数 ---
-
-func traceIDFromCtx(ctx context.Context) string {
-	if v, ok := ctx.Value(keyTraceID).(string); ok {
-		return v
+	sc := trace.SpanFromContext(ctx).SpanContext()
+	if sc.IsValid() {
+		return sc.TraceID().String()
 	}
 	return ""
 }
 
-func spanFromCtx(ctx context.Context) *Span {
-	if v, ok := ctx.Value(keySpanID).(*Span); ok {
-		return v
+// SlogAttr 返回 (trace_id, span_id) slog 属性，用于结构化日志关联。
+func SlogAttr(ctx context.Context) []slog.Attr {
+	sc := trace.SpanFromContext(ctx).SpanContext()
+	if !sc.IsValid() {
+		return nil
 	}
-	return nil
-}
-
-func newID() string {
-	var b [16]byte
-	rand.Read(b[:])
-	return hex.EncodeToString(b[:])
+	return []slog.Attr{
+		slog.String("trace_id", sc.TraceID().String()),
+		slog.String("span_id", sc.SpanID().String()),
+	}
 }

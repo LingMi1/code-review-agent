@@ -10,12 +10,11 @@ import (
 	"time"
 
 	agentv1 "github.com/LingMi1/code-review-agent/internal/genproto/agent/v1"
-	"github.com/LingMi1/code-review-agent/internal/otel"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -75,6 +74,7 @@ func (cb *circuitBreaker) onFailure() {
 func New(addr string) (*Client, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cognition: dial %s: %w", addr, err)
@@ -193,30 +193,12 @@ func (c *Client) run(ctx context.Context, runReq *agentv1.RunRequest) (*ReviewRe
 
 // runOnce 打开 gRPC stream 并收集最终结果文本。
 func (c *Client) runOnce(ctx context.Context, runReq *agentv1.RunRequest) (string, error) {
-	ctx = injectTraceID(ctx)
-
 	stream, err := c.svc.Run(ctx, runReq, grpc.WaitForReady(true))
 	if err != nil {
 		return "", fmt.Errorf("cognition: open run stream: %w", err)
 	}
 
 	return collectFinalResult(runReq.GetRunId(), stream)
-}
-
-// injectTraceID 将 ctx 中的 trace_id 注入 gRPC outgoing metadata，实现跨进程关联。
-func injectTraceID(ctx context.Context) context.Context {
-	traceID := otel.TraceID(ctx)
-	if traceID == "" {
-		return ctx
-	}
-	md, ok := metadata.FromOutgoingContext(ctx)
-	if !ok {
-		md = metadata.MD{}
-	} else {
-		md = md.Copy()
-	}
-	md.Set("x-trace-id", traceID)
-	return metadata.NewOutgoingContext(ctx, md)
 }
 
 // isRetryable 判断错误是否适合重试（仅瞬时/传输类错误）。

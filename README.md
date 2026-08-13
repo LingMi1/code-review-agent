@@ -73,9 +73,11 @@ Large PRs are reviewed in **plan-execute mode**: the agent first decomposes the 
 
 ### Observability
 
-- **OpenTelemetry**: Distributed tracing across Go → gRPC → agent-go cognition
+- **OpenTelemetry**: Real OTel Go SDK with OTLP gRPC exporter. Spans flow across HTTP → gRPC → agent-go cognition via W3C TraceContext (`otelgrpc` + `otelhttp`).
+- **Tracing config**: Set `OTEL_EXPORTER_OTLP_ENDPOINT` to send traces to a collector (Jaeger/Tempo/etc.). If unset, traces are sampled locally but not exported.
+- **`X-Trace-ID`**: Every response carries a trace ID header for correlating logs and traces.
 - **Prometheus**: `/metrics` endpoint with review counts, latency, and error rates
-- **Structured Logging**: `log/slog` with request-scoped fields
+- **Structured Logging**: `log/slog` with `trace_id` / `span_id` fields
 
 ### Frontend Dashboard
 

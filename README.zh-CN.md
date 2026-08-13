@@ -73,9 +73,11 @@ GitHub PR webhook / 手动触发
 
 ### 可观测性
 
-- **OpenTelemetry**：跨 Go → gRPC → agent-go 认知面的分布式追踪
+- **OpenTelemetry**：真正的 OTel Go SDK + OTLP gRPC exporter，通过 W3C TraceContext（`otelgrpc` + `otelhttp`）实现 HTTP → gRPC → agent-go 认知面全链路追踪
+- **追踪配置**：设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 将 trace 发送到 collector（如 Jaeger/Tempo）；未设置时本地采样但不导出
+- **`X-Trace-ID`**：每个响应都携带 trace ID 头，用于关联日志与 trace
 - **Prometheus**：`/metrics` 端点对外提供审查数量、延迟、错误率
-- **结构化日志**：`log/slog` 带请求级字段
+- **结构化日志**：`log/slog` 带 `trace_id` / `span_id` 字段
 
 ### 前端界面
 
