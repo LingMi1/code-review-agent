@@ -1,68 +1,109 @@
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import {
+  GitPullRequest,
+  ExternalLink,
+  Code2,
+  Settings,
+} from 'lucide-react';
 import ReviewList from './pages/ReviewList';
 import ReviewDetail from './pages/ReviewDetail';
 
 export default function App() {
   const location = useLocation();
+  const isList = location.pathname === '/';
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      {/* Navbar */}
-      <nav className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3 text-lg font-semibold hover:text-emerald-400 transition-colors">
-            <span className="text-2xl">🔍</span>
-            <span>Code Review Agent</span>
+    <div className="min-h-screen bg-surface flex">
+      {/* 侧边栏 */}
+      <aside className="w-60 shrink-0 bg-sidebar text-gray-300 flex flex-col fixed inset-y-0">
+        {/* Logo */}
+        <div className="px-5 py-5 border-b border-white/5">
+          <Link to="/" className="flex items-center gap-3 group">
+            <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-from to-brand-to flex items-center justify-center shadow-lg shadow-brand/30">
+              <Code2 className="w-5 h-5 text-white" strokeWidth={2.25} />
+            </span>
+            <span className="leading-tight">
+              <span className="block text-sm font-semibold text-white">Code Review</span>
+              <span className="block text-xs text-gray-400">Agent</span>
+            </span>
           </Link>
-          <div className="flex items-center gap-4 text-sm text-gray-400">
-            <Link
-              to="/"
-              className={`hover:text-white transition-colors ${location.pathname === '/' ? 'text-emerald-400' : ''}`}
-            >
-              Reviews
-            </Link>
-            <span className="text-gray-600">|</span>
-            <a
-              href="https://github.com/LingMi1/agent-go"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-white transition-colors"
-            >
-              agent-go ↗
-            </a>
+        </div>
+
+        {/* 导航 */}
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          <NavItem to="/" icon={<GitPullRequest className="w-4 h-4" />} label="Reviews" active={isList} />
+          <div className="pt-4 mt-4 border-t border-white/5 space-y-1">
             <a
               href="https://github.com/LingMi1/code-review-agent"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-white transition-colors"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
             >
-              GitHub ↗
+              <ExternalLink className="w-4 h-4" />
+              GitHub Repo
+            </a>
+            <a
+              href="https://github.com/LingMi1/agent-go"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <Code2 className="w-4 h-4" />
+              agent-go
             </a>
           </div>
+        </nav>
+
+        {/* 底部设置占位 */}
+        <div className="px-3 py-4 border-t border-white/5">
+          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 cursor-not-allowed">
+            <Settings className="w-4 h-4" />
+            Settings
+          </div>
         </div>
-      </nav>
+      </aside>
 
-      {/* Main */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        <Routes>
-          <Route path="/" element={<ReviewList />} />
-          <Route path="/reviews/:id" element={<ReviewDetail />} />
-        </Routes>
-      </main>
+      {/* 主内容区 */}
+      <div className="flex-1 ml-60 flex flex-col min-h-screen">
+        {/* 顶栏 */}
+        <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-sm border-b border-gray-200">
+          <div className="max-w-5xl mx-auto px-8 h-14 flex items-center justify-between">
+            <div className="text-sm text-gray-500">
+              {isList ? '代码审查面板' : '审查详情'}
+            </div>
+            <div className="flex items-center gap-3 text-sm text-gray-500">
+              <span className="hidden sm:inline-flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                Agent 在线
+              </span>
+            </div>
+          </div>
+        </header>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-800 py-6 text-center text-sm text-gray-500">
-        Powered by{' '}
-        <a
-          href="https://github.com/LingMi1/agent-go"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-emerald-400 hover:underline"
-        >
-          agent-go
-        </a>
-        {' '}— Go webhook + gRPC cognition + React dashboard
-      </footer>
+        {/* 内容 */}
+        <main className="flex-1 max-w-5xl mx-auto w-full px-8 py-8">
+          <Routes>
+            <Route path="/" element={<ReviewList />} />
+            <Route path="/reviews/:id" element={<ReviewDetail />} />
+          </Routes>
+        </main>
+      </div>
     </div>
+  );
+}
+
+function NavItem({ to, icon, label, active }: { to: string; icon: React.ReactNode; label: string; active: boolean }) {
+  return (
+    <Link
+      to={to}
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+        active
+          ? 'bg-brand text-white font-medium'
+          : 'text-gray-400 hover:text-white hover:bg-white/5'
+      }`}
+    >
+      {icon}
+      {label}
+    </Link>
   );
 }

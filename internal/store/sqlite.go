@@ -11,17 +11,17 @@ import (
 
 // ReviewRecord 是一条审查记录。
 type ReviewRecord struct {
-	ID        int64
-	PRNumber  int
-	RepoURL   string
-	HeadSHA   string
-	Status    string // "pending", "running", "success", "failed"
-	Issues    int    // 发现的问题数
-	Summary   string
-	Duration  string // Agent 处理耗时
-	Error     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        int64     `json:"id"`
+	PRNumber  int       `json:"pr_number"`
+	RepoURL   string    `json:"repo_url"`
+	HeadSHA   string    `json:"head_sha"`
+	Status    string    `json:"status"` // "pending", "running", "success", "failed"
+	Issues    int       `json:"issues"` // 发现的问题数
+	Summary   string    `json:"summary"`
+	Duration  string    `json:"duration"` // Agent 处理耗时
+	Error     string    `json:"error"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // AuditEntry 是一条审计日志。
