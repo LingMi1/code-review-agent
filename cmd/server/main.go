@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -89,9 +90,22 @@ func main() {
 	// SSE hub — 实时推送审查进度
 	sseHub := sse.NewHub()
 
+	// 并发审查上限，防止突发 PR 打爆 gRPC/SQLite
+	const maxConcurrentReviews = 5
+	reviewSem := make(chan struct{}, maxConcurrentReviews)
+
 	// processReview 是审查核心逻辑，被 webhook 和手动 API 共享。
-	processReview := func(ctx context.Context, owner, repoName string, prNumber int, headSHA string) error {
+	processReview := func(ctx context.Context, owner, repoName string, prNumber int, headSHA string, existingReviewID int64) error {
 		repoFullName := owner + "/" + repoName
+
+		// 并发限流，防止突发 PR 打爆 gRPC/SQLite
+		select {
+		case reviewSem <- struct{}{}:
+			defer func() { <-reviewSem }()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
 		sessionID := fmt.Sprintf("pr-review-%s/%d", repoFullName, prNumber)
 
 		// 创建根 span：整个 PR 审查流程
@@ -106,26 +120,39 @@ func main() {
 			"head_sha", headSHA,
 		)
 
-		sseHub.Publish(sessionID, sse.Event{Type: "review.started", Data: fmt.Sprintf(`{"pr":%d,"status":"running"}`, prNumber)})
+		sseHub.Publish(sessionID, sseEvent("review.started", map[string]any{"pr": prNumber, "status": "running"}))
 
-		// 统一处理失败事件
+		// reviewID 提前声明，供 defer 中的 panic 恢复统一更新状态。
+		reviewID := existingReviewID
 		var resultErr error
 		defer func() {
+			if r := recover(); r != nil {
+				resultErr = fmt.Errorf("panic: %v", r)
+				slog.Error("processReview panic", "pr", prNumber, "panic", r, "stack", string(debug.Stack()))
+				m.RecordFailure()
+			}
 			if resultErr != nil {
-				sseHub.Publish(sessionID, sse.Event{Type: "review.failed", Data: fmt.Sprintf(
-					`{"pr":%d,"status":"failed","error":"%s"}`, prNumber, resultErr.Error())})
+				if reviewID != 0 {
+					db.UpdateReview(reviewID, "failed", 0, "", "", resultErr.Error())
+				}
+				sseHub.Publish(sessionID, sseEvent("review.failed", map[string]any{
+					"pr": prNumber, "status": "failed", "error": resultErr.Error(),
+				}))
 			}
 		}()
 
 		// 审计
 		db.AuditLog("review.started", prNumber, repoFullName, "")
 
-		// 1. 创建审查记录
-		reviewID, err := db.InsertReview(prNumber, repoFullName, headSHA)
-		if err != nil {
-			m.RecordFailure()
-			resultErr = fmt.Errorf("insert review record: %w", err)
-			return resultErr
+		// 1. 创建审查记录（手动触发已预创建则复用）
+		if reviewID == 0 {
+			var err error
+			reviewID, err = db.InsertReview(prNumber, repoFullName, headSHA)
+			if err != nil {
+				m.RecordFailure()
+				resultErr = fmt.Errorf("insert review record: %w", err)
+				return resultErr
+			}
 		}
 		db.AuditLog("review.started", prNumber, repoFullName, fmt.Sprintf("review_id=%d", reviewID))
 
@@ -136,7 +163,6 @@ func main() {
 			rawDiff, err := ghClient.PRDiff(ctx, owner, repoName, prNumber)
 			fetchSpan.End()
 			if err != nil {
-				db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
 				db.AuditLog("review.failed", prNumber, repoFullName, err.Error())
 				m.RecordFailure()
 				resultErr = fmt.Errorf("fetch PR diff: %w", err)
@@ -156,8 +182,9 @@ func main() {
 			if len(chunks) == 0 {
 				slog.InfoContext(ctx, "no files to review (all generated/skipped)", "pr", prNumber)
 				db.UpdateReview(reviewID, "success", 0, "No reviewable files", "", "")
-				sseHub.Publish(sessionID, sse.Event{Type: "review.completed", Data: fmt.Sprintf(
-					`{"pr":%d,"status":"success","issues":0,"duration_ms":0}`, prNumber)})
+				sseHub.Publish(sessionID, sseEvent("review.completed", map[string]any{
+					"pr": prNumber, "status": "success", "issues": 0, "duration_ms": 0,
+				}))
 				return nil
 			}
 
@@ -174,11 +201,13 @@ func main() {
 				"mode", map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
 			)
 
-			sseHub.Publish(sessionID, sse.Event{Type: "review.progress", Data: fmt.Sprintf(
-				`{"pr":%d,"status":"analyzing","files":%d,"chunks":%d,"mode":"%s"}`,
-				prNumber, len(files), len(chunks),
-				map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
-			)})
+			sseHub.Publish(sessionID, sseEvent("review.progress", map[string]any{
+				"pr":     prNumber,
+				"status": "analyzing",
+				"files":  len(files),
+				"chunks": len(chunks),
+				"mode":   map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
+			}))
 
 			// 4. 构造 prompt
 			prTitle := fmt.Sprintf("%s#%d", repoFullName, prNumber)
@@ -214,7 +243,6 @@ func main() {
 			}
 			cognitionSpan.End()
 			if err != nil {
-				db.UpdateReview(reviewID, "failed", 0, "", "", err.Error())
 				db.AuditLog("review.failed", prNumber, repoFullName, err.Error())
 				m.RecordCognitionError()
 				m.RecordFailure()
@@ -230,8 +258,8 @@ func main() {
 
 			// 6. 解析结果 + 投递到 GitHub（如果有 headSHA）
 			_, postSpan := otel.StartSpan(ctx, "github.post_review")
-			if err := review.ParseAndPost(ctx, ghClient, owner, repoName, prNumber, headSHA, result.Text); err != nil {
-				db.UpdateReview(reviewID, "failed", 0, "", result.Duration.String(), err.Error())
+			postResult, err := review.ParseAndPost(ctx, ghClient, owner, repoName, prNumber, headSHA, result.Text)
+			if err != nil {
 				db.AuditLog("review.failed", prNumber, repoFullName, err.Error())
 				m.RecordFailure()
 				postSpan.End()
@@ -240,16 +268,17 @@ func main() {
 			}
 			postSpan.End()
 
-			// 7. 更新审查记录
-			issues := parseIssueCount(result.Text)
-			db.UpdateReview(reviewID, "success", issues, parseSummary(result.Text), result.Duration.String(), "")
+			// 7. 更新审查记录（复用 ParseAndPost 返回的结构化结果）
+			issues := postResult.Issues
+			db.UpdateReview(reviewID, "success", issues, postResult.Summary, result.Duration.String(), "")
 			db.AuditLog("review.completed", prNumber, repoFullName,
 				fmt.Sprintf("issues=%d duration=%s", issues, result.Duration))
 
 			m.RecordSuccess(result.Duration.Milliseconds(), len(result.Text), issues)
 
-			sseHub.Publish(sessionID, sse.Event{Type: "review.completed", Data: fmt.Sprintf(
-				`{"pr":%d,"status":"success","issues":%d,"duration_ms":%d}`, prNumber, issues, result.Duration.Milliseconds())})
+			sseHub.Publish(sessionID, sseEvent("review.completed", map[string]any{
+				"pr": prNumber, "status": "success", "issues": issues, "duration_ms": result.Duration.Milliseconds(),
+			}))
 
 			slog.InfoContext(ctx, "review posted to GitHub", "pr", prNumber, "issues", issues)
 		}
@@ -264,7 +293,7 @@ func main() {
 			return fmt.Errorf("invalid repo: %s", event.RepoFullName)
 		}
 		db.AuditLog("webhook.received", event.PRNumber, event.RepoFullName, event.Action)
-		return processReview(context.Background(), parts[0], parts[1], event.PRNumber, event.HeadSHA)
+		return processReview(context.Background(), parts[0], parts[1], event.PRNumber, event.HeadSHA, 0)
 	}
 
 	// HTTP server
@@ -284,13 +313,17 @@ func main() {
 	// GET  /api/reviews        → 列表
 	// POST /api/reviews        → 手动触发审查 {owner, repo, pr_number}
 	mux.HandleFunc("/api/reviews", func(w http.ResponseWriter, r *http.Request) {
-		enableCORS(w)
+		enableCORS(w, r)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 		if r.Method == http.MethodPost {
-			// 手动触发审查
+			// 手动触发审查：校验 API token（若已配置）
+			if !authorizeManualTrigger(r) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 			var req struct {
 				Owner    string `json:"owner"`
 				Repo     string `json:"repo"`
@@ -311,12 +344,13 @@ func main() {
 			)
 			// 异步处理，立即返回 review ID
 			db.AuditLog("manual.trigger", req.PRNumber, req.Owner+"/"+req.Repo, "")
+			// 预创建记录并复用其 ID，避免 processReview 内部重复创建。
 			reviewID, err := db.InsertReview(req.PRNumber, req.Owner+"/"+req.Repo, "")
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			go processReview(context.Background(), req.Owner, req.Repo, req.PRNumber, "")
+			go processReview(context.Background(), req.Owner, req.Repo, req.PRNumber, "", reviewID)
 			writeJSON(w, map[string]interface{}{
 				"review_id": reviewID,
 				"status":    "started",
@@ -333,7 +367,7 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/reviews/", func(w http.ResponseWriter, r *http.Request) {
-		enableCORS(w)
+		enableCORS(w, r)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return

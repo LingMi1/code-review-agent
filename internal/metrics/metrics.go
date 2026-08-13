@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -143,22 +144,12 @@ func (r *Recorder) recalcLatencies() {
 
 	sorted := make([]int64, len(r.latencies))
 	copy(sorted, r.latencies)
-	bubbleSort(sorted)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 
 	n := len(sorted)
 	r.p50 = sorted[n*50/100]
 	r.p95 = sorted[n*95/100]
 	r.p99 = sorted[n*99/100]
-}
-
-func bubbleSort(a []int64) {
-	for i := 0; i < len(a); i++ {
-		for j := 0; j < len(a)-i-1; j++ {
-			if a[j] > a[j+1] {
-				a[j], a[j+1] = a[j+1], a[j]
-			}
-		}
-	}
 }
 
 func sum(a []int64) int64 {

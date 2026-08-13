@@ -30,20 +30,33 @@ type ReviewOutput struct {
 	Issues  []Issue `json:"issues"`
 }
 
+// PostResult 是审查投递结果，供上层更新审查记录。
+type PostResult struct {
+	Issues  int    // 发现的问题数
+	Summary string // 审查摘要
+}
+
 // ParseAndPost 解析 Agent 的审查结果并投递到 GitHub PR。
-func ParseAndPost(ctx context.Context, gh *github.Client, owner, repo string, prNumber int, headSHA string, resultText string) error {
+// 返回结构化结果（问题数 + 摘要），避免上层再次解析文本。
+func ParseAndPost(ctx context.Context, gh *github.Client, owner, repo string, prNumber int, headSHA string, resultText string) (*PostResult, error) {
 	review, err := parseResult(resultText)
 	if err != nil {
 		// JSON 解析失败 → 降级为纯文本 comment
 		slog.Warn("review: failed to parse structured output, falling back to plain text", "error", err)
-		return gh.PostIssueComment(ctx, owner, repo, prNumber, formatPlainComment(resultText))
+		if err := gh.PostIssueComment(ctx, owner, repo, prNumber, formatPlainComment(resultText)); err != nil {
+			return nil, err
+		}
+		return &PostResult{Issues: 0, Summary: truncateSummary(resultText)}, nil
 	}
 
 	if len(review.Issues) == 0 {
-		return gh.PostIssueComment(ctx, owner, repo, prNumber, fmt.Sprintf(
+		if err := gh.PostIssueComment(ctx, owner, repo, prNumber, fmt.Sprintf(
 			"## AI Code Review\n\n%s\n\n**No issues found.** Great job!",
 			review.Summary,
-		))
+		)); err != nil {
+			return nil, err
+		}
+		return &PostResult{Issues: 0, Summary: review.Summary}, nil
 	}
 
 	// 构建 review body
@@ -61,11 +74,24 @@ func ParseAndPost(ctx context.Context, gh *github.Client, owner, repo string, pr
 	// 尝试构造 inline comments
 	comments := buildInlineComments(review.Issues)
 	if len(comments) > 0 {
-		return gh.PostReview(ctx, owner, repo, prNumber, headSHA, body, comments)
+		if err := gh.PostReview(ctx, owner, repo, prNumber, headSHA, body, comments); err != nil {
+			return nil, err
+		}
+	} else if err := gh.PostIssueComment(ctx, owner, repo, prNumber, body); err != nil {
+		// 无法构造 inline comments → 降级为 issue comment
+		return nil, err
 	}
 
-	// 无法构造 inline comments → 降级为 issue comment
-	return gh.PostIssueComment(ctx, owner, repo, prNumber, body)
+	return &PostResult{Issues: len(review.Issues), Summary: review.Summary}, nil
+}
+
+// truncateSummary 截断摘要，用于降级路径的展示。
+func truncateSummary(s string) string {
+	const maxLen = 200
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // parseResult 尝试从 LLM 输出中提取 JSON。

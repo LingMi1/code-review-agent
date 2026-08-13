@@ -28,9 +28,12 @@ export interface TriggerRequest {
 }
 
 export async function triggerReview(req: TriggerRequest): Promise<{ review_id: number; status: string }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = import.meta.env.VITE_API_TOKEN as string | undefined;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${BASE}/reviews`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(req),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

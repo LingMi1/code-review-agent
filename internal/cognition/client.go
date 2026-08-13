@@ -6,13 +6,25 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
 	agentv1 "github.com/LingMi1/code-review-agent/internal/genproto/agent/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
+	"github.com/LingMi1/code-review-agent/internal/otel"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+)
+
+// 认知面调用的默认健壮性参数。
+const (
+	defaultTimeout = 5 * time.Minute // 单次 gRPC 调用超时
+	maxAttempts    = 3               // 瞬时错误的最大重试次数
+	maxCBFailures  = 5               // 连续失败多少次后熔断
+	cbCooldown     = 30 * time.Second
 )
 
 // Client 是 agent-go 认知面的客户端。
@@ -20,6 +32,43 @@ type Client struct {
 	addr string
 	conn *grpc.ClientConn
 	svc  agentv1.CognitionServiceClient
+	cb   *circuitBreaker
+}
+
+// circuitBreaker 是基于连续失败次数的轻量熔断器。
+type circuitBreaker struct {
+	mu                  sync.Mutex
+	maxFailures         int
+	cooldown            time.Duration
+	consecutiveFailures int
+	openUntil           time.Time
+}
+
+func newCircuitBreaker(maxFailures int, cooldown time.Duration) *circuitBreaker {
+	return &circuitBreaker{maxFailures: maxFailures, cooldown: cooldown}
+}
+
+func (cb *circuitBreaker) allow() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	return !cb.openUntil.After(time.Now())
+}
+
+func (cb *circuitBreaker) onSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.consecutiveFailures = 0
+	cb.openUntil = time.Time{}
+}
+
+func (cb *circuitBreaker) onFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.consecutiveFailures++
+	if cb.consecutiveFailures >= cb.maxFailures {
+		cb.openUntil = time.Now().Add(cb.cooldown)
+		cb.consecutiveFailures = 0
+	}
 }
 
 // New 创建认知面客户端并建立连接。
@@ -34,6 +83,7 @@ func New(addr string) (*Client, error) {
 		addr: addr,
 		conn: conn,
 		svc:  agentv1.NewCognitionServiceClient(conn),
+		cb:   newCircuitBreaker(maxCBFailures, cbCooldown),
 	}, nil
 }
 
@@ -61,8 +111,6 @@ type ReviewResult struct {
 
 // RunReview 发送审查请求到 agent-go 认知面，收集并返回最终结果。
 func (c *Client) RunReview(ctx context.Context, req ReviewRequest) (*ReviewResult, error) {
-	start := time.Now()
-
 	agentType := req.AgentType
 	if agentType == "" {
 		agentType = "react"
@@ -72,9 +120,8 @@ func (c *Client) RunReview(ctx context.Context, req ReviewRequest) (*ReviewResul
 		maxSteps = 3
 	}
 
-	runID := uuid.New().String()
-	stream, err := c.svc.Run(ctx, &agentv1.RunRequest{
-		RunId:         runID,
+	return c.run(ctx, &agentv1.RunRequest{
+		RunId:         uuid.New().String(),
 		SessionId:     req.SessionID,
 		Query:         req.Query,
 		AgentType:     agentType,
@@ -83,20 +130,7 @@ func (c *Client) RunReview(ctx context.Context, req ReviewRequest) (*ReviewResul
 		Metadata: map[string]string{
 			"output_format": "json",
 		},
-	}, grpc.WaitForReady(true))
-	if err != nil {
-		return nil, fmt.Errorf("cognition: open run stream: %w", err)
-	}
-
-	finalText, err := collectFinalResult(runID, stream)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ReviewResult{
-		Text:     finalText,
-		Duration: time.Since(start),
-	}, nil
+	})
 }
 
 // RunPlanExecuteReview 使用 Plan-Execute 模式审查大型 PR。
@@ -105,11 +139,9 @@ func (c *Client) RunPlanExecuteReview(ctx context.Context, sessID, query string,
 	if maxSteps <= 0 {
 		maxSteps = 8 // Plan-Execute 需要更多步数（plan + execute + aggregate）
 	}
-	start := time.Now()
 
-	runID := uuid.New().String()
-	stream, err := c.svc.Run(ctx, &agentv1.RunRequest{
-		RunId:         runID,
+	return c.run(ctx, &agentv1.RunRequest{
+		RunId:         uuid.New().String(),
 		SessionId:     sessID,
 		Query:         query,
 		AgentType:     "plan_execute",
@@ -119,20 +151,87 @@ func (c *Client) RunPlanExecuteReview(ctx context.Context, sessID, query string,
 			"output_format": "json",
 			"review_mode":   "plan_execute",
 		},
-	}, grpc.WaitForReady(true))
+	})
+}
+
+// run 执行一次认知面调用，带超时、重试与熔断保护。
+func (c *Client) run(ctx context.Context, runReq *agentv1.RunRequest) (*ReviewResult, error) {
+	start := time.Now()
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if !c.cb.allow() {
+			return nil, fmt.Errorf("cognition: circuit breaker open")
+		}
+
+		callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+		finalText, err := c.runOnce(callCtx, runReq)
+		cancel()
+
+		if err == nil {
+			c.cb.onSuccess()
+			return &ReviewResult{Text: finalText, Duration: time.Since(start)}, nil
+		}
+
+		c.cb.onFailure()
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+		slog.Warn("cognition: retrying after transient error",
+			"attempt", attempt+1,
+			"error", err,
+		)
+		select {
+		case <-time.After(time.Duration(attempt+1) * time.Second):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return nil, lastErr
+}
+
+// runOnce 打开 gRPC stream 并收集最终结果文本。
+func (c *Client) runOnce(ctx context.Context, runReq *agentv1.RunRequest) (string, error) {
+	ctx = injectTraceID(ctx)
+
+	stream, err := c.svc.Run(ctx, runReq, grpc.WaitForReady(true))
 	if err != nil {
-		return nil, fmt.Errorf("cognition: open plan-execute stream: %w", err)
+		return "", fmt.Errorf("cognition: open run stream: %w", err)
 	}
 
-	finalText, err := collectFinalResult(runID, stream)
-	if err != nil {
-		return nil, err
-	}
+	return collectFinalResult(runReq.GetRunId(), stream)
+}
 
-	return &ReviewResult{
-		Text:     finalText,
-		Duration: time.Since(start),
-	}, nil
+// injectTraceID 将 ctx 中的 trace_id 注入 gRPC outgoing metadata，实现跨进程关联。
+func injectTraceID(ctx context.Context) context.Context {
+	traceID := otel.TraceID(ctx)
+	if traceID == "" {
+		return ctx
+	}
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		md = metadata.MD{}
+	} else {
+		md = md.Copy()
+	}
+	md.Set("x-trace-id", traceID)
+	return metadata.NewOutgoingContext(ctx, md)
+}
+
+// isRetryable 判断错误是否适合重试（仅瞬时/传输类错误）。
+func isRetryable(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		// 非 gRPC 状态错误（如缺少结果文本）重试无意义。
+		return false
+	}
+	switch st.Code() {
+	case codes.Unavailable, codes.DeadlineExceeded, codes.Aborted, codes.ResourceExhausted:
+		return true
+	default:
+		return false
+	}
 }
 
 // collectFinalResult 从 gRPC server-stream 中收集最终结果文本。

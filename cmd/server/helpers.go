@@ -2,9 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
+
+	"github.com/LingMi1/code-review-agent/internal/sse"
 )
 
 // writeJSON 写入 JSON 响应。
@@ -13,11 +18,39 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// enableCORS 为 API 响应添加 CORS 头。
-func enableCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+var (
+	allowedOriginsOnce sync.Once
+	allowedOriginsSet  map[string]bool
+)
+
+// allowedOrigins 从环境变量 ALLOWED_ORIGINS 读取允许的 CORS origin（逗号分隔）。
+func allowedOrigins() map[string]bool {
+	allowedOriginsOnce.Do(func() {
+		raw := os.Getenv("ALLOWED_ORIGINS")
+		if raw == "" {
+			raw = "http://localhost:5173"
+		}
+		set := map[string]bool{}
+		for _, o := range strings.Split(raw, ",") {
+			o = strings.TrimSpace(o)
+			if o != "" {
+				set[o] = true
+			}
+		}
+		allowedOriginsSet = set
+	})
+	return allowedOriginsSet
+}
+
+// enableCORS 为 API 响应添加 CORS 头，仅允许白名单内的 origin。
+func enableCORS(w http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	if origin != "" && allowedOrigins()[origin] {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+	}
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Trace-ID")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Trace-ID")
 }
 
 // parseID 从 URL path 中提取数字 ID。
@@ -28,35 +61,27 @@ func parseID(path, prefix string) int {
 	return id
 }
 
-// parseIssueCount 估算 Agent 输出中发现了多少问题。
-func parseIssueCount(resultText string) int {
-	count := 0
-	for _, line := range strings.Split(resultText, "\n") {
-		if strings.Contains(line, `"file"`) {
-			count++
-		}
+// sseEvent 构造一条 SSE 事件，data 用 JSON 序列化以避免手工拼接导致的转义问题。
+func sseEvent(typ string, v any) sse.Event {
+	b, err := json.Marshal(v)
+	if err != nil {
+		b = []byte("{}")
 	}
-	return count
+	return sse.Event{Type: typ, Data: string(b)}
 }
 
-// parseSummary 从 Agent 输出中提取 summary 字段。
-func parseSummary(resultText string) string {
-	idx := strings.Index(resultText, `"summary"`)
-	if idx == -1 {
-		return ""
+// authorizeManualTrigger 校验手动触发请求的 API token。
+// 若未配置 API_TOKEN，则允许（开发模式）并记录警告。
+func authorizeManualTrigger(r *http.Request) bool {
+	token := os.Getenv("API_TOKEN")
+	if token == "" {
+		slog.Warn("API_TOKEN not set; manual review trigger is unauthenticated")
+		return true
 	}
-	start := strings.Index(resultText[idx:], `"`)
-	if start == -1 {
-		return ""
+	auth := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if strings.HasPrefix(auth, prefix) {
+		auth = strings.TrimPrefix(auth, prefix)
 	}
-	start += idx + 1
-	end := strings.Index(resultText[start+1:], `"`)
-	if end == -1 {
-		return resultText[start : start+200]
-	}
-	summary := resultText[start+1 : start+1+end]
-	if len(summary) > 200 {
-		summary = summary[:200] + "..."
-	}
-	return summary
+	return auth == token || r.Header.Get("X-API-Token") == token
 }
