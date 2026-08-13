@@ -2,6 +2,8 @@
 
 AI-powered code review that catches bugs, security issues, and performance problems in your pull requests — **powered by [agent-go](https://github.com/LingMi1/agent-go)**, the production-grade multi-agent platform.
 
+> [简体中文](README.zh-CN.md)
+
 ## Screenshots
 
 | Review Dashboard | Review Detail |
