@@ -162,16 +162,21 @@ func evaluateCase(c EvalCase, exp ExpectedResult, found []FoundIssue, latency ti
 	return result
 }
 
+// lineTolerance 是行号匹配的容差。
+// LLM 对 unified diff 行号（hunk header 的 @@ +N @@ 计算）存在固有噪声，
+// 且人工标注也可能有 ±1-2 行的误差，因此允许 ±3 行的容差。
+const lineTolerance = 3
+
 // isMatch 判断 Agent 找到的 issue 是否和期望的 issue 匹配。
-// 匹配规则：文件名包含匹配 + 行号在范围内 + category 一致。
+// 匹配规则：文件名包含匹配 + 行号在容差范围内 + category 一致。
 func isMatch(found FoundIssue, expected ExpectedIssue) bool {
 	// 文件名：found 的文件名包含 expected 的文件名（或者反过来）
 	if !containsAny(found.File, expected.File) && !containsAny(expected.File, found.File) {
 		return false
 	}
-	// 行号：在 expected 范围内
+	// 行号：在 expected 范围内（含容差）
 	if expected.LineStart > 0 && found.Line > 0 {
-		if found.Line < expected.LineStart || found.Line > expected.LineEnd {
+		if found.Line < expected.LineStart-lineTolerance || found.Line > expected.LineEnd+lineTolerance {
 			return false
 		}
 	}

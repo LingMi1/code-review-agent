@@ -7,6 +7,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,17 +16,32 @@ import (
 )
 
 func main() {
+	real := flag.Bool("real", false, "use real agent-go cognition (gRPC) instead of mock reviewer")
+	cognitionAddr := flag.String("cognition", "localhost:50051", "agent-go cognition gRPC address")
+	flag.Parse()
+
 	// Resolve eval/ directories relative to project root
 	root := findRoot()
 	corpusDir := filepath.Join(root, "eval", "corpus")
 	expectedDir := filepath.Join(root, "eval", "expected")
 	reportPath := filepath.Join(root, "eval", "report.json")
 
-	// Run with mock reviewer
-	fmt.Println("Running evaluation with mock reviewer...")
+	// Choose reviewer: mock (default) or real cognition
+	var reviewFn eval.ReviewFunc
+	if *real {
+		fmt.Printf("Running evaluation with real cognition (%s)...\n", *cognitionAddr)
+		var err error
+		reviewFn, err = eval.CognitionReview(*cognitionAddr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to connect to cognition: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Println("Running evaluation with mock reviewer...")
+	}
 	fmt.Println()
 
-	report, err := eval.Run(corpusDir, expectedDir, nil)
+	report, err := eval.Run(corpusDir, expectedDir, reviewFn)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "evaluation failed: %v\n", err)
 		os.Exit(1)
