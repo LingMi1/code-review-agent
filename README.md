@@ -1,8 +1,13 @@
 # Code Review Agent
 
-AI-powered code review that catches bugs, security issues, and performance problems in your pull requests — **powered by [agent-go](https://github.com/LingMi1/agent-go)**, the production-grade multi-agent platform.
+[![CI](https://github.com/LingMi1/code-review-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/LingMi1/code-review-agent/actions/workflows/ci.yml)
+[![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > [简体中文](README.zh-CN.md)
+
+AI-powered code review that catches bugs, security issues, and performance problems in your pull requests — **powered by [agent-go](https://github.com/LingMi1/agent-go)**, the production-grade multi-agent platform.
 
 ## Screenshots
 

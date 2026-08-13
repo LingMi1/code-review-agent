@@ -1,8 +1,13 @@
 # Code Review Agent
 
-AI 代码审查工具，自动找出 PR 里的 bug、安全漏洞和性能问题。认知能力**完全由生产级多 Agent 平台 [agent-go](https://github.com/LingMi1/agent-go) 提供**，本仓库不内置任何 LLM SDK。
+[![CI](https://github.com/LingMi1/code-review-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/LingMi1/code-review-agent/actions/workflows/ci.yml)
+[![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > [English](README.md)
+
+AI 代码审查工具，自动找出 PR 里的 bug、安全漏洞和性能问题。认知能力**完全由生产级多 Agent 平台 [agent-go](https://github.com/LingMi1/agent-go) 提供**，本仓库不内置任何 LLM SDK。
 
 ## 界面截图
 
