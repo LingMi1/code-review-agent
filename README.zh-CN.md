@@ -2,7 +2,7 @@
 
 AI 驱动的代码审查，自动发现 PR 中的 bug、安全漏洞和性能问题 —— **由 [agent-go](https://github.com/LingMi1/agent-go) 提供认知能力**，一个生产级的多 Agent 平台。
 
-> [English](README.md) | [简体中文](README.zh-CN.md)
+> [English](README.md)
 
 ## 界面截图
 
