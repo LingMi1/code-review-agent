@@ -81,10 +81,10 @@ export default function ReviewDetail() {
         <span className="inline-flex w-14 h-14 rounded-xl bg-red-50 items-center justify-center mb-4">
           <X className="w-7 h-7 text-red-500" />
         </span>
-        <p className="text-red-600">{error || '审查记录不存在'}</p>
+        <p className="text-red-600">{error || 'Review not found'}</p>
         <Link to="/" className="inline-flex items-center gap-1.5 text-brand hover:text-brand-hover mt-4 text-sm">
           <ChevronLeft className="w-4 h-4" />
-          返回列表
+          Back to reviews
         </Link>
       </div>
     );
@@ -92,17 +92,17 @@ export default function ReviewDetail() {
 
   return (
     <div>
-      {/* 面包屑 */}
+      {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
         <Link to="/" className="inline-flex items-center gap-1 hover:text-brand transition-colors">
           <ChevronLeft className="w-4 h-4" />
-          审查列表
+          Reviews
         </Link>
         <span>/</span>
         <span className="font-mono text-gray-700">#{review.pr_number}</span>
       </div>
 
-      {/* 头部 */}
+      {/* Header */}
       <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 mb-5">
           <div className="min-w-0">
@@ -137,60 +137,60 @@ export default function ReviewDetail() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand hover:bg-brand-hover text-white rounded-lg disabled:opacity-50 transition-colors"
               >
                 <Terminal className="w-3.5 h-3.5" />
-                {sseActive ? '流式接收中...' : '查看实时流'}
+                {sseActive ? 'Streaming...' : 'Watch live'}
               </button>
             )}
           </div>
         </div>
 
-        {/* 统计 */}
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
-          <StatCard label="发现问题" value={review.issues || 0} icon={<AlertTriangle className="w-4 h-4" />} tone="amber" />
-          <StatCard label="耗时" value={review.duration || '—'} icon={<Clock className="w-4 h-4" />} tone="brand" />
-          <StatCard label="状态" value={review.status} icon={<CheckCircle2 className="w-4 h-4" />} tone="green" />
+          <StatCard label="Issues Found" value={review.issues || 0} icon={<AlertTriangle className="w-4 h-4" />} tone="amber" />
+          <StatCard label="Duration" value={review.duration || '—'} icon={<Clock className="w-4 h-4" />} tone="brand" />
+          <StatCard label="Status" value={review.status} icon={<CheckCircle2 className="w-4 h-4" />} tone="green" />
         </div>
       </div>
 
-      {/* 错误 */}
+      {/* Error */}
       {review.error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-6">
           <p className="flex items-center gap-2 text-red-700 font-medium text-sm mb-1">
             <X className="w-4 h-4" />
-            审查失败
+            Review failed
           </p>
           <p className="text-red-600 font-mono text-xs whitespace-pre-wrap">{review.error}</p>
         </div>
       )}
 
-      {/* 审查结果 */}
+      {/* Result */}
       {review.summary && (
         <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <FileCode2 className="w-4 h-4 text-brand" />
-            <h2 className="text-base font-semibold text-gray-900">审查结果</h2>
+            <h2 className="text-base font-semibold text-gray-900">Review Result</h2>
           </div>
           <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{review.summary}</p>
         </div>
       )}
 
-      {/* Agent 思考流 (SSE) */}
+      {/* Agent thinking stream (SSE) */}
       {(sseLog.length > 0 || review.status === 'running') && (
         <div className="bg-brand-soft border border-brand/20 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-brand" />
-              <h2 className="text-base font-semibold text-gray-900">Agent 思考流</h2>
+              <h2 className="text-base font-semibold text-gray-900">Agent Thinking Stream</h2>
             </div>
             {review.status === 'running' && sseActive && (
               <span className="inline-flex items-center gap-1.5 text-xs text-brand">
                 <span className="w-2 h-2 rounded-full bg-brand animate-pulse" />
-                实时连接中
+                Live
               </span>
             )}
           </div>
           {sseLog.length === 0 ? (
             <p className="text-sm text-gray-500">
-              {sseActive ? '等待 Agent 事件...' : '点击「查看实时流」连接 Agent 思考流。'}
+              {sseActive ? 'Waiting for agent events...' : 'Click "Watch live" to connect to the agent stream.'}
             </p>
           ) : (
             <div className="space-y-2 max-h-72 overflow-y-auto">
@@ -268,17 +268,17 @@ function formatSSEData(data: string): string {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg: Record<string, { cls: string; icon: React.ReactNode }> = {
-    running: { cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    success: { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="w-3 h-3" /> },
-    failed: { cls: 'bg-red-50 text-red-700 border-red-200', icon: <X className="w-3 h-3" /> },
-    pending: { cls: 'bg-gray-100 text-gray-600 border-gray-200', icon: <Clock className="w-3 h-3" /> },
+  const cfg: Record<string, { cls: string; icon: React.ReactNode; label: string }> = {
+    running: { cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: <Loader2 className="w-3 h-3 animate-spin" />, label: 'Running' },
+    success: { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Succeeded' },
+    failed: { cls: 'bg-red-50 text-red-700 border-red-200', icon: <X className="w-3 h-3" />, label: 'Failed' },
+    pending: { cls: 'bg-gray-100 text-gray-600 border-gray-200', icon: <Clock className="w-3 h-3" />, label: 'Pending' },
   };
   const c = cfg[status] || cfg.pending;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${c.cls}`}>
       {c.icon}
-      {status}
+      {c.label}
     </span>
   );
 }

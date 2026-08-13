@@ -2,7 +2,7 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import {
   GitPullRequest,
   ExternalLink,
-  Code2,
+  Bot,
   Settings,
 } from 'lucide-react';
 import ReviewList from './pages/ReviewList';
@@ -14,14 +14,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-surface flex">
-      {/* 侧边栏 */}
+      {/* Sidebar */}
       <aside className="w-60 shrink-0 bg-sidebar text-gray-300 flex flex-col fixed inset-y-0">
         {/* Logo */}
         <div className="px-5 py-5 border-b border-white/5">
-          <Link to="/" className="flex items-center gap-3 group">
-            <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-from to-brand-to flex items-center justify-center shadow-lg shadow-brand/30">
-              <Code2 className="w-5 h-5 text-white" strokeWidth={2.25} />
-            </span>
+          <Link to="/" className="flex items-center gap-3">
+            <Logo />
             <span className="leading-tight">
               <span className="block text-sm font-semibold text-white">Code Review</span>
               <span className="block text-xs text-gray-400">Agent</span>
@@ -29,7 +27,7 @@ export default function App() {
           </Link>
         </div>
 
-        {/* 导航 */}
+        {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1">
           <NavItem to="/" icon={<GitPullRequest className="w-4 h-4" />} label="Reviews" active={isList} />
           <div className="pt-4 mt-4 border-t border-white/5 space-y-1">
@@ -48,13 +46,13 @@ export default function App() {
               rel="noopener noreferrer"
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
             >
-              <Code2 className="w-4 h-4" />
+              <Bot className="w-4 h-4" />
               agent-go
             </a>
           </div>
         </nav>
 
-        {/* 底部设置占位 */}
+        {/* Bottom */}
         <div className="px-3 py-4 border-t border-white/5">
           <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 cursor-not-allowed">
             <Settings className="w-4 h-4" />
@@ -63,24 +61,24 @@ export default function App() {
         </div>
       </aside>
 
-      {/* 主内容区 */}
+      {/* Main content */}
       <div className="flex-1 ml-60 flex flex-col min-h-screen">
-        {/* 顶栏 */}
+        {/* Top bar */}
         <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-sm border-b border-gray-200">
           <div className="max-w-5xl mx-auto px-8 h-14 flex items-center justify-between">
             <div className="text-sm text-gray-500">
-              {isList ? '代码审查面板' : '审查详情'}
+              {isList ? 'Code Review Dashboard' : 'Review Detail'}
             </div>
             <div className="flex items-center gap-3 text-sm text-gray-500">
               <span className="hidden sm:inline-flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                Agent 在线
+                Agent Online
               </span>
             </div>
           </div>
         </header>
 
-        {/* 内容 */}
+        {/* Content */}
         <main className="flex-1 max-w-5xl mx-auto w-full px-8 py-8">
           <Routes>
             <Route path="/" element={<ReviewList />} />
@@ -89,6 +87,26 @@ export default function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+function Logo() {
+  return (
+    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="logo-grad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#7C3AED" />
+          <stop offset="1" stopColor="#4F46E5" />
+        </linearGradient>
+      </defs>
+      <rect width="36" height="36" rx="9" fill="url(#logo-grad)" />
+      {/* angle brackets </> */}
+      <path d="M13 12.5L9 18L13 23.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M23 12.5L27 18L23 23.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 14L16 22" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+      {/* spark */}
+      <path d="M28 5.5L29.2 6.7L30.5 8L29.2 9.3L28 10.5L26.8 9.3L25.5 8L26.8 6.7Z" fill="white" fillOpacity="0.9" />
+    </svg>
   );
 }
 

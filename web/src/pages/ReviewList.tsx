@@ -58,13 +58,13 @@ export default function ReviewList() {
         repo: repo.trim(),
         pr_number: parseInt(prNumber, 10),
       });
-      setTriggerMsg(`审查 #${result.review_id} 已启动`);
+      setTriggerMsg(`Review #${result.review_id} started`);
       setOwner(''); setRepo(''); setPrNumber('');
       setShowForm(false);
       const data = await fetchReviews();
       setReviews(data);
     } catch (err) {
-      setTriggerMsg(err instanceof Error ? err.message : '触发失败');
+      setTriggerMsg(err instanceof Error ? err.message : 'Failed to trigger');
     } finally {
       setTriggering(false);
     }
@@ -81,9 +81,9 @@ export default function ReviewList() {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700">
-        <p className="font-semibold">加载失败</p>
+        <p className="font-semibold">Failed to load</p>
         <p className="text-sm mt-1">{error}</p>
-        <p className="text-xs mt-2 text-red-400">请确认后端运行在 http://localhost:8080</p>
+        <p className="text-xs mt-2 text-red-400">Make sure the backend is running at http://localhost:8080</p>
       </div>
     );
   }
@@ -94,40 +94,40 @@ export default function ReviewList() {
 
   return (
     <div>
-      {/* 页头 + 统计 */}
+      {/* Header */}
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">代码审查</h1>
-          <p className="text-sm text-gray-500 mt-1">基于 agent-go 认知面的自动化 PR 审查</p>
+          <h1 className="text-2xl font-bold text-gray-900">Code Review</h1>
+          <p className="text-sm text-gray-500 mt-1">Automated PR reviews powered by agent-go cognition</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
           className="inline-flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
-          手动触发
+          New Review
         </button>
       </div>
 
-      {/* 统计卡片 */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <StatCard label="总审查" value={reviews.length} icon={<GitPullRequest className="w-4 h-4" />} tone="brand" />
-        <StatCard label="发现问题" value={totalIssues} icon={<AlertTriangle className="w-4 h-4" />} tone="amber" />
-        <StatCard label="成功 / 失败" value={`${successCount} / ${failCount}`} icon={<CheckCircle2 className="w-4 h-4" />} tone="green" />
+        <StatCard label="Total Reviews" value={reviews.length} icon={<GitPullRequest className="w-4 h-4" />} tone="brand" />
+        <StatCard label="Issues Found" value={totalIssues} icon={<AlertTriangle className="w-4 h-4" />} tone="amber" />
+        <StatCard label="Succeeded / Failed" value={`${successCount} / ${failCount}`} icon={<CheckCircle2 className="w-4 h-4" />} tone="green" />
       </div>
 
-      {/* 触发表单 */}
+      {/* Trigger form */}
       {showForm && (
         <form onSubmit={handleTrigger} className="mb-6 bg-white border border-gray-200 rounded-xl p-5 space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">手动代码审查</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Manual Code Review</h3>
             <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
               <X className="w-4 h-4" />
             </button>
           </div>
           <div className="flex gap-3 items-end">
             <div className="flex-1">
-              <label className="text-xs text-gray-500 block mb-1.5">GitHub 仓库</label>
+              <label className="text-xs text-gray-500 block mb-1.5">GitHub Repository</label>
               <div className="flex gap-1.5 items-center">
                 <input
                   type="text"
@@ -149,7 +149,7 @@ export default function ReviewList() {
               </div>
             </div>
             <div>
-              <label className="text-xs text-gray-500 block mb-1.5">PR 编号</label>
+              <label className="text-xs text-gray-500 block mb-1.5">PR Number</label>
               <input
                 type="number"
                 placeholder="42"
@@ -165,18 +165,18 @@ export default function ReviewList() {
               className="inline-flex items-center gap-2 px-5 py-2 bg-brand hover:bg-brand-hover disabled:bg-gray-300 text-white rounded-lg text-sm font-medium transition-colors"
             >
               {triggering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-              {triggering ? '启动中...' : '开始审查'}
+              {triggering ? 'Starting...' : 'Start Review'}
             </button>
           </div>
           {triggerMsg && (
-            <div className={`text-sm p-3 rounded-lg ${triggerMsg.startsWith('审查 #') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+            <div className={`text-sm p-3 rounded-lg ${triggerMsg.startsWith('Review #') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
               {triggerMsg}
             </div>
           )}
         </form>
       )}
 
-      {/* 列表 */}
+      {/* List */}
       {reviews.length === 0 ? (
         <EmptyState onTrigger={() => setShowForm(true)} />
       ) : (
@@ -259,33 +259,33 @@ function EmptyState({ onTrigger }: { onTrigger: () => void }) {
       <span className="inline-flex w-14 h-14 rounded-xl bg-brand-soft items-center justify-center mb-4">
         <GitPullRequest className="w-7 h-7 text-brand" />
       </span>
-      <h2 className="text-lg font-semibold text-gray-900 mb-1">暂无审查记录</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-1">No reviews yet</h2>
       <p className="text-sm text-gray-500 max-w-sm mx-auto mb-6">
-        手动输入一个 GitHub PR 触发审查，或配置 webhook 实现自动审查。
+        Trigger a review on a GitHub PR, or configure a webhook for automatic reviews.
       </p>
       <button
         onClick={onTrigger}
         className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-medium transition-colors"
       >
         <Plus className="w-4 h-4" />
-        触发首次审查
+        Trigger your first review
       </button>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg: Record<string, { cls: string; icon: React.ReactNode }> = {
-    running: { cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    success: { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="w-3 h-3" /> },
-    failed: { cls: 'bg-red-50 text-red-700 border-red-200', icon: <X className="w-3 h-3" /> },
-    pending: { cls: 'bg-gray-100 text-gray-600 border-gray-200', icon: <Clock className="w-3 h-3" /> },
+  const cfg: Record<string, { cls: string; icon: React.ReactNode; label: string }> = {
+    running: { cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: <Loader2 className="w-3 h-3 animate-spin" />, label: 'Running' },
+    success: { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Succeeded' },
+    failed: { cls: 'bg-red-50 text-red-700 border-red-200', icon: <X className="w-3 h-3" />, label: 'Failed' },
+    pending: { cls: 'bg-gray-100 text-gray-600 border-gray-200', icon: <Clock className="w-3 h-3" />, label: 'Pending' },
   };
   const c = cfg[status] || cfg.pending;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${c.cls}`}>
       {c.icon}
-      {status}
+      {c.label}
     </span>
   );
 }
