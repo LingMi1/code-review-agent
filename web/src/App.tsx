@@ -100,12 +100,15 @@ function Logo() {
         </linearGradient>
       </defs>
       <rect width="36" height="36" rx="9" fill="url(#logo-grad)" />
-      {/* angle brackets </> */}
-      <path d="M13 12.5L9 18L13 23.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M23 12.5L27 18L23 23.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M20 14L16 22" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-      {/* spark */}
-      <path d="M28 5.5L29.2 6.7L30.5 8L29.2 9.3L28 10.5L26.8 9.3L25.5 8L26.8 6.7Z" fill="white" fillOpacity="0.9" />
+      {/* 5-petal flower */}
+      <g fill="white">
+        <ellipse cx="18" cy="9" rx="5" ry="7.5" />
+        <ellipse cx="18" cy="9" rx="5" ry="7.5" transform="rotate(72 18 18)" />
+        <ellipse cx="18" cy="9" rx="5" ry="7.5" transform="rotate(144 18 18)" />
+        <ellipse cx="18" cy="9" rx="5" ry="7.5" transform="rotate(216 18 18)" />
+        <ellipse cx="18" cy="9" rx="5" ry="7.5" transform="rotate(288 18 18)" />
+      </g>
+      <circle cx="18" cy="18" r="2.75" fill="#4C1D95" />
     </svg>
   );
 }
