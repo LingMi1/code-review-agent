@@ -136,7 +136,7 @@ func buildInlineComments(issues []Issue) []github.ReviewComment {
 // formatPlainComment 格式化纯文本审查结果（降级路径）。
 func formatPlainComment(resultText string) string {
 	return fmt.Sprintf(
-		"## AI Code Review\n\n%s\n\n---\n*Powered by [agent-go](https://github.com/yourname/agent-go)* | Review ID: `%s`",
+		"## AI Code Review\n\n%s\n\n---\n*Powered by [agent-go](https://github.com/LingMi1/agent-go)* | Review ID: `%s`",
 		resultText,
 		uuid.New().String()[:8],
 	)
