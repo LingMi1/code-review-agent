@@ -6,7 +6,7 @@
 
 ## 概览
 
-code-review-agent 是一个自动审查 Pull Request 的 GitHub App。本质上是用 Go 写的一层轻量编排，把真正的「思考」交给外部的 **agent-go cognition** 服务，通过 gRPC 调用。
+code-review-agent 是一个自动审查 Pull Request 的 GitHub Webhook 服务。本质上是用 Go 写的一层轻量编排，把真正的「思考」交给外部的 **agent-go cognition** 服务，通过 gRPC 调用。
 
 ```
 GitHub webhook ──▶ Go 服务 ──▶ agent-go cognition (gRPC)

@@ -8,7 +8,7 @@ to understand *why* the system is built the way it is.
 
 ## Overview
 
-code-review-agent is a GitHub App that automatically reviews pull requests. It is
+code-review-agent is a GitHub webhook service that automatically reviews pull requests. It is
 a thin orchestration layer in Go that delegates the actual "thinking" to an
 external **agent-go cognition** service over gRPC.
 

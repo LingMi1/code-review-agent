@@ -40,6 +40,7 @@ services:
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN:?GITHUB_TOKEN required}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      API_TOKEN: ${API_TOKEN:-}
       COGNITION_ADDR: cognition:50051
       LISTEN_ADDR: ":8080"
       SQLITE_PATH: /app/data/reviews.db

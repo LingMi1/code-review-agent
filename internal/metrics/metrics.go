@@ -92,7 +92,7 @@ func (r *Recorder) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	r.recalcLatencies()
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	write := func(s string) { io.WriteString(w, s) }
+	write := func(s string) { _, _ = io.WriteString(w, s) }
 
 	// HELP / TYPE
 	write("# HELP review_total Total number of code reviews.\n")

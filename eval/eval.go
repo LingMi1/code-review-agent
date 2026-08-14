@@ -2,7 +2,7 @@
 //
 // 用法：
 //
-//	go run ./eval/ eval/runner.go
+//	go run ./cmd/eval/
 //
 // 该命令会：
 //  1. 加载 eval/corpus/ 下的测试用例

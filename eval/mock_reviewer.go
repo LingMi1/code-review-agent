@@ -2,7 +2,6 @@
 package eval
 
 import (
-	"encoding/json"
 	"strings"
 )
 
@@ -68,14 +67,5 @@ func mockReview(diff string, language string) ([]FoundIssue, error) {
 		}
 	}
 
-	return issues, nil
-}
-
-// unmarshalAsIssues 从 JSON 字符串解析 issue 列表（用于 parseResult 的本地副本）。
-func unmarshalAsIssues(data []byte) ([]FoundIssue, error) {
-	var issues []FoundIssue
-	if err := json.Unmarshal(data, &issues); err != nil {
-		return nil, err
-	}
 	return issues, nil
 }

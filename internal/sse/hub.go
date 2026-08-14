@@ -139,7 +139,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			data := evt.Data
 			if s, ok := data.(string); ok {
-				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Type, s)
+				_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Type, s)
 			} else {
 				_, _ = fmt.Fprintf(w, "event: %s\ndata: %v\n\n", evt.Type, data)
 			}
