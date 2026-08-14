@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/LingMi1/code-review-agent/internal/cognition"
+	"github.com/LingMi1/code-review-agent/internal/config"
 	"github.com/LingMi1/code-review-agent/internal/github"
 	"github.com/LingMi1/code-review-agent/internal/metrics"
 	"github.com/LingMi1/code-review-agent/internal/middleware"
@@ -43,10 +44,15 @@ func main() {
 	// 结构化日志 + 自动 trace_id 注入
 	slog.SetDefault(slog.New(otel.NewSlogHandler()))
 
-	// OpenTelemetry 追踪
-	if os.Getenv("OTEL_SERVICE_NAME") == "" {
-		os.Setenv("OTEL_SERVICE_NAME", "code-review-agent")
+	// 集中加载 + 校验配置
+	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		slog.Error("config invalid", "error", err)
+		os.Exit(1)
 	}
+
+	// OpenTelemetry 追踪
+	os.Setenv("OTEL_SERVICE_NAME", cfg.OtelServiceName)
 	shutdown, err := otel.Init(context.Background())
 	if err != nil {
 		slog.Error("failed to init OpenTelemetry", "error", err)
@@ -54,28 +60,13 @@ func main() {
 	}
 	defer shutdown(context.Background())
 
-	// 环境变量
-	githubToken := os.Getenv("GITHUB_TOKEN")
-	webhookSecret := os.Getenv("WEBHOOK_SECRET")
-	cognitionAddr := os.Getenv("COGNITION_ADDR")
-	listenAddr := envDefault("LISTEN_ADDR", ":8080")
-	sqlitePath := envDefault("SQLITE_PATH", "./data/reviews.db")
-
-	if githubToken == "" {
-		slog.Error("GITHUB_TOKEN is required")
-		os.Exit(1)
-	}
-	if cognitionAddr == "" {
-		cognitionAddr = "localhost:50051"
-	}
-
 	// Prometheus 指标
 	m := metrics.New()
 
 	// 初始化组件
-	ghClient := github.New(githubToken)
+	ghClient := github.New(cfg.GitHubToken)
 
-	cogClient, err := cognition.New(cognitionAddr)
+	cogClient, err := cognition.New(cfg.CognitionAddr)
 	if err != nil {
 		slog.Error("failed to connect to agent-go cognition", "error", err)
 		os.Exit(1)
@@ -88,7 +79,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := store.New(sqlitePath)
+	db, err := store.New(cfg.SQLitePath)
 	if err != nil {
 		slog.Error("failed to open SQLite", "error", err)
 		os.Exit(1)
@@ -97,7 +88,7 @@ func main() {
 
 	// SSE hub — 实时推送审查进度
 	sseHub := sse.NewHub()
-	sseHub.SetAllowedOrigins(allowedOrigins())
+	sseHub.SetAllowedOrigins(cfg.AllowedOrigins)
 
 	// 审查服务：编排 diff 拉取 → 认知面调用 → 结果投递。
 	reviewSvc := reviewer.New(db, cogClient, ghClient, sseHub, m, 5)
@@ -113,7 +104,7 @@ func main() {
 	}
 
 	// HTTP server
-	wh := webhook.New(webhookSecret, onPR)
+	wh := webhook.New(cfg.WebhookSecret, onPR)
 	mux := http.NewServeMux()
 	mux.Handle("/webhook", wh)
 	mux.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -196,12 +187,18 @@ func main() {
 		writeJSON(w, review)
 	})
 
-	// 包裹 OTel trace middleware
-	handler := middleware.Tracing(mux)
+	// 中间件链：Tracing → Recovery → RateLimit → mux
+	rl := middleware.NewRateLimiter(120, time.Minute) // 每分钟 120 次/IP
+	handler := middleware.Tracing(
+		middleware.Recovery(
+			middleware.RateLimit(rl)(mux),
+		),
+	)
 
 	srv := &http.Server{
-		Addr:    listenAddr,
-		Handler: handler,
+		Addr:              cfg.ListenAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second, // 防 slowloris
 	}
 
 	// 优雅关闭
@@ -216,20 +213,12 @@ func main() {
 	}()
 
 	slog.Info("code-review-agent starting",
-		"listen", listenAddr,
-		"cognition", cognitionAddr,
-		"metrics", fmt.Sprintf("%s/metrics", listenAddr),
+		"listen", cfg.ListenAddr,
+		"cognition", cfg.CognitionAddr,
+		"metrics", fmt.Sprintf("%s/metrics", cfg.ListenAddr),
 	)
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
 	}
-}
-
-// envDefault 返回环境变量或默认值。
-func envDefault(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultVal
 }

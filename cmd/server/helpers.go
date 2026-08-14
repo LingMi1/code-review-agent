@@ -1,8 +1,8 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -60,17 +60,26 @@ func parseID(path, prefix string) int {
 }
 
 // authorizeManualTrigger 校验手动触发请求的 API token。
-// 若未配置 API_TOKEN，则允许（开发模式）并记录警告。
+// 若未配置 API_TOKEN，则允许（开发模式）。
 func authorizeManualTrigger(r *http.Request) bool {
 	token := os.Getenv("API_TOKEN")
 	if token == "" {
-		slog.Warn("API_TOKEN not set; manual review trigger is unauthenticated")
 		return true
 	}
+	// 尝试 Bearer header
 	auth := r.Header.Get("Authorization")
 	const prefix = "Bearer "
 	if strings.HasPrefix(auth, prefix) {
-		auth = strings.TrimPrefix(auth, prefix)
+		provided := []byte(strings.TrimPrefix(auth, prefix))
+		if subtle.ConstantTimeCompare(provided, []byte(token)) == 1 {
+			return true
+		}
 	}
-	return auth == token || r.Header.Get("X-API-Token") == token
+	// 尝试 X-API-Token header
+	if xToken := r.Header.Get("X-API-Token"); xToken != "" {
+		if subtle.ConstantTimeCompare([]byte(xToken), []byte(token)) == 1 {
+			return true
+		}
+	}
+	return false
 }

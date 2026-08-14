@@ -4,6 +4,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -55,34 +56,54 @@ func New(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// migrate 创建表。
+// migrations 是按版本号排序的 schema 迁移。每次只执行尚未应用的迁移。
+var migrations = []string{
+	// v1: 初始 schema
+	`
+	CREATE TABLE IF NOT EXISTS reviews (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		pr_number INTEGER NOT NULL,
+		repo_url TEXT NOT NULL DEFAULT '',
+		head_sha TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		issues INTEGER NOT NULL DEFAULT 0,
+		summary TEXT NOT NULL DEFAULT '',
+		duration TEXT NOT NULL DEFAULT '',
+		error TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE TABLE IF NOT EXISTS audit_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		action TEXT NOT NULL,
+		pr_number INTEGER NOT NULL DEFAULT 0,
+		actor TEXT NOT NULL DEFAULT '',
+		detail TEXT NOT NULL DEFAULT '',
+		timestamp DATETIME NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_reviews_pr ON reviews(pr_number);
+	CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+	`,
+}
+
+// migrate 执行未应用的 schema 迁移，使用 PRAGMA user_version 追踪进度。
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS reviews (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			pr_number INTEGER NOT NULL,
-			repo_url TEXT NOT NULL DEFAULT '',
-			head_sha TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL DEFAULT 'pending',
-			issues INTEGER NOT NULL DEFAULT 0,
-			summary TEXT NOT NULL DEFAULT '',
-			duration TEXT NOT NULL DEFAULT '',
-			error TEXT NOT NULL DEFAULT '',
-			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
-			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
-		);
-		CREATE TABLE IF NOT EXISTS audit_log (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			action TEXT NOT NULL,
-			pr_number INTEGER NOT NULL DEFAULT 0,
-			actor TEXT NOT NULL DEFAULT '',
-			detail TEXT NOT NULL DEFAULT '',
-			timestamp DATETIME NOT NULL DEFAULT (datetime('now'))
-		);
-		CREATE INDEX IF NOT EXISTS idx_reviews_pr ON reviews(pr_number);
-		CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
-	`)
-	return err
+	var version int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
+
+	for i := version; i < len(migrations); i++ {
+		slog.Info("store: applying schema migration", "version", i+1)
+		if _, err := db.Exec(migrations[i]); err != nil {
+			return fmt.Errorf("apply migration v%d: %w", i+1, err)
+		}
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
+			return fmt.Errorf("set schema version %d: %w", i+1, err)
+		}
+	}
+
+	return nil
 }
 
 // InsertReview 创建审查记录。
@@ -113,7 +134,7 @@ func (s *Store) AuditLog(action string, prNumber int, actor, detail string) {
 		action, prNumber, actor, detail,
 	)
 	if err != nil {
-		// audit log failure is non-fatal
+		slog.Error("store: audit log write failed", "action", action, "pr", prNumber, "error", err)
 	}
 }
 

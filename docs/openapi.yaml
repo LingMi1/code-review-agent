@@ -1,0 +1,179 @@
+openapi: 3.0.3
+info:
+  title: Code Review Agent API
+  version: 1.0.0
+  description: |
+    AI-powered GitHub PR code review service. Cognition provided by agent-go.
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        '200':
+          description: Prometheus text format metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /webhook:
+    post:
+      summary: GitHub webhook receiver
+      description: Receives GitHub PR webhook events. Requires HMAC-SHA256 signature.
+      parameters:
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-GitHub-Delivery
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook received and processing
+        '401':
+          description: Signature verification failed
+
+  /api/reviews:
+    get:
+      summary: List recent reviews
+      responses:
+        '200':
+          description: List of review records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReviewRecord'
+    post:
+      summary: Manually trigger a review
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner, repo, pr_number]
+              properties:
+                owner:
+                  type: string
+                repo:
+                  type: string
+                pr_number:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Review started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  review_id:
+                    type: integer
+                  status:
+                    type: string
+        '401':
+          description: Unauthorized (API token required)
+
+  /api/reviews/{id}:
+    get:
+      summary: Get review details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Review record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewRecord'
+        '404':
+          description: Review not found
+
+  /api/reviews/stream:
+    get:
+      summary: SSE stream for review progress
+      parameters:
+        - name: session
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    ReviewRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        pr_number:
+          type: integer
+        repo_url:
+          type: string
+        head_sha:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, success, failed]
+        issues:
+          type: integer
+        summary:
+          type: string
+        duration:
+          type: string
+        error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time

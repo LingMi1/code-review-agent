@@ -3,6 +3,7 @@ package webhook
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 )
 
 // parsePREvent 从 GitHub webhook body 解析 PR 事件信息。
@@ -34,7 +35,9 @@ func parsePREvent(body []byte) (*PullRequestEvent, error) {
 			} `json:"base"`
 		} `json:"pull_request"`
 	}
-	json.Unmarshal(body, &prDetail)
+	if err := json.Unmarshal(body, &prDetail); err != nil {
+		slog.Warn("webhook: failed to parse PR detail (head/base SHA may be empty)", "error", err)
+	}
 
 	if raw.PR == nil || raw.Repository == nil {
 		return nil, fmt.Errorf("missing pull_request or repository in webhook payload (action=%q)", raw.Action)
