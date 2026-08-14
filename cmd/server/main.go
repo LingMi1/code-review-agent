@@ -7,7 +7,7 @@
 //	export COGNITION_ADDR=localhost:50051
 //	go run ./cmd/server/
 //
-// 需要 agent-go 认知面已启动（docker compose up agent-go-cognition）。
+// 需要 agent-go 认知面已启动（docker compose up -d --build，或本地直连见 README）。
 //
 // 可观测性：
 //

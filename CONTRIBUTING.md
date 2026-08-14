@@ -14,8 +14,10 @@ Thanks for your interest in contributing! code-review-agent is an AI-powered Git
 git clone https://github.com/LingMi1/code-review-agent.git
 cd code-review-agent
 
-# Backend
-cp .env.example .env   # then fill in your secrets
+# Backend — the Go server reads env vars directly (os.Getenv), not a .env file.
+# Use .env only with docker compose, which injects it into the container.
+export GITHUB_TOKEN=your_token
+export WEBHOOK_SECRET=your_secret
 go run ./cmd/server/
 
 # Frontend (separate terminal)

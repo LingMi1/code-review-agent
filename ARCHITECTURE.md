@@ -70,7 +70,8 @@ agent-go's cognition routes requests by **role**, not per-request model
 selection. code-review-agent maps two strategies onto those roles:
 
 - `react` (small PR) → `executor` role → cheap/fast model (deepseek)
-- `plan_execute` (large PR) → `planner` role → strong model
+- `plan_execute` (10+ files that fit in one prompt) → `planner` role → strong model
+- `react` chunked (oversized diff) → `executor` role, split into ~800-line chunks
 
 This gives cost/quality control without forking the LLM stack.
 

@@ -164,12 +164,13 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 	}
 
 	prSize := diff.CalcPRSize(allFiles, files)
-	usePlanExecute := diff.ShouldUsePlanExecute(prSize)
+	// plan-execute 需要把整份 diff 塞进单 prompt（约 800 行），因此仅当
+	// "文件多且未分块"时真正生效；行数过大时走 chunked react 而非 plan-execute。
+	usePlanExecute := diff.ShouldUsePlanExecute(prSize) && len(chunks) == 1
 
-	// 模型路由：经 agent-go 的角色分层路由实现。
-	//   react        → executor 角色（默认 deepseek，便宜）
-	//   plan_execute → planner 角色（可用 COGNITION_PLANNER_MODEL 切到更强模型）
-	// 小 PR 走 react 用便宜模型，大 PR 走 plan_execute 用强模型。
+	// 模型路由：由 agent-go 的角色分层路由实现（本仓库不直接选择模型）。
+	//   react        → agent-go executor 角色（默认 deepseek，便宜）
+	//   plan_execute → agent-go planner 角色（agent-go 侧可用 COGNITION_PLANNER_MODEL 切换）
 	modelTier := "cheap"
 	if usePlanExecute {
 		modelTier = "strong"

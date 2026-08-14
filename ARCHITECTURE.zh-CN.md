@@ -61,7 +61,8 @@ webhook 事件
 agent-go 认知面是按**角色**而不是按请求来路由模型的。code-review-agent 把两种策略映射到这些角色上：
 
 - `react`（小 PR）→ `executor` 角色 → 便宜、快的模型（deepseek）
-- `plan_execute`（大 PR）→ `planner` 角色 → 更强的模型
+- `plan_execute`（10+ 文件且能塞进单条 prompt）→ `planner` 角色 → 更强的模型
+- `react` 分块（diff 过大）→ `executor` 角色，切成约 800 行一块
 
 这样不用自己复刻一套 LLM 技术栈，就能在成本和效果之间做选择。
 

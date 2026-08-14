@@ -53,9 +53,9 @@ GitHub PR webhook / manual trigger
 
 - **Real PR Processing**: Handles `opened`, `synchronize`, and `reopened` PR events
 - **HMAC-SHA256 Webhook Verification**: Prevents forged requests
-- **Diff Chunking**: Large PRs split by file into ≤800-line chunks, reviewed independently and merged
+- **Diff Chunking**: Large PRs split by file into ~800-line chunks (large files split at hunk boundaries), reviewed independently and merged
 - **Structured JSON Output**: LLM returns machine-parseable review with file/line/severity/category/suggestion
-- **Graceful Degradation**: Falls back to plain-text comment when JSON parsing fails
+- **Graceful Degradation**: Single-shot reviews fall back to a plain-text comment when JSON parsing fails
 - **GitHub API Rate Limit Handling**: Respects `Retry-After` headers with automatic retry
 - **Deduplication**: Webhook delivery-id dedup prevents duplicate reviews
 - **Generated File Filtering**: Skips lockfiles, protobuf stubs, vendor dirs, binaries
@@ -64,12 +64,12 @@ GitHub PR webhook / manual trigger
 
 ### Cost Control
 
-- **Model Routing**: `react` mode → agent-go `executor` role (default DeepSeek, cheap); `plan_execute` mode → `planner` role (configurable to a stronger model via `COGNITION_PLANNER_MODEL`)
-- **Prompt Truncation**: Prompts capped at 32KB and oversized hunks trimmed before construction
+- **Model Routing**: `react` mode → agent-go `executor` role (default DeepSeek, cheap); `plan_execute` mode → agent-go `planner` role (agent-go selects a stronger model via its own `COGNITION_PLANNER_MODEL`)
+- **Prompt Truncation**: Prompts capped at 32000 bytes (~31 KB) and oversized hunks trimmed before construction
 
 ### Multi-Agent (Plan-Execute)
 
-Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first decomposes the review into independent sub-tasks (security, bug detection, performance, code quality), executes each in parallel, then aggregates results into a single structured review.
+PRs with 10+ files that still fit in a single prompt are reviewed in **plan-execute mode**: the agent first decomposes the review into independent sub-tasks (security, bug detection, performance, code quality), executes each in parallel, then aggregates results into a single structured review. Larger diffs fall back to chunked react review to avoid prompt truncation.
 
 ### Security & Reliability
 
@@ -77,11 +77,11 @@ Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first d
 - **Panic Recovery**: Middleware catches handler panics, logs the stack trace, and returns 500 instead of crashing the process
 - **ReadHeaderTimeout**: 5s header-read timeout mitigates slowloris-style attacks
 - **Constant-Time Token Comparison**: API token checks use `crypto/subtle.ConstantTimeCompare` to prevent timing attacks
-- **Startup Config Validation**: All required configuration is validated on boot — the server refuses to start when critical env vars are missing
+- **Startup Config Validation**: `GITHUB_TOKEN` is required on boot; `WEBHOOK_SECRET` and `API_TOKEN` are optional and disable verification/auth when unset (with a warning)
 
 ### Observability
 
-- **OpenTelemetry**: Real OTel Go SDK with OTLP gRPC exporter. Spans flow across HTTP → gRPC via W3C TraceContext (`otelgrpc` + `otelhttp`).
+- **OpenTelemetry**: Real OTel Go SDK with OTLP gRPC exporter. Spans propagate across the HTTP → gRPC boundary via W3C TraceContext (`otelgrpc` on the gRPC client plus a custom HTTP middleware).
 - **Tracing config**: Set `OTEL_EXPORTER_OTLP_ENDPOINT` to send traces to a collector (Jaeger/Tempo/etc.). If unset, traces are sampled locally but not exported.
 - **End-to-end traces**: Enable OTel on agent-go's cognition too (`COGNITION_OTEL_ENABLED=true` + `COGNITION_OTEL_EXPORTER_OTLP_ENDPOINT` → same collector) to join Go and Python spans in one trace.
 - **`X-Trace-ID`**: Every response carries a trace ID header for correlating logs and traces.
@@ -92,7 +92,7 @@ Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first d
 ### Frontend Dashboard
 
 - **React + TypeScript + Vite**: Review list and detail pages
-- **SSE Real-time Streaming**: Live agent thinking stream via `/api/reviews/stream`
+- **SSE Real-time Progress**: Live review lifecycle events (started/progress/completed/failed) via `/api/reviews/stream`
 - **Manual Trigger**: Trigger a review on any PR from the UI (no webhook required)
 
 ### Evaluation
@@ -107,6 +107,7 @@ Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first d
 
 - Go 1.25+
 - Docker (for agent-go cognition)
+- The [agent-go](https://github.com/LingMi1/agent-go) repo cloned as a sibling directory (needed by `docker compose` to build the cognition image)
 - GitHub Personal Access Token with `repo` scope
 - LLM API key (DeepSeek or Anthropic)
 
@@ -124,15 +125,22 @@ cp .env.example .env
 # Edit .env with your tokens
 ```
 
-### 3. Start agent-go Cognition
+### 3. Start Everything (cognition + app)
+
+```bash
+export GITHUB_TOKEN=ghp_xxxx
+export LLM_API_KEY=sk-xxxx
+docker compose up -d --build
+```
+
+This builds and runs both the agent-go cognition service and this app; the app reaches cognition over Docker's internal network (`cognition:50051`).
+
+### 4. Run the Server Locally (alternative)
+
+If you prefer to run the Go server outside Docker, first expose the cognition gRPC port by uncommenting `ports: "50051:50051"` in `docker-compose.yml` (or run agent-go's cognition natively), then:
 
 ```bash
 docker compose up -d cognition
-```
-
-### 4. Run the Server
-
-```bash
 export GITHUB_TOKEN=ghp_xxxx
 export WEBHOOK_SECRET=mysecret
 export COGNITION_ADDR=localhost:50051
@@ -180,6 +188,7 @@ code-review-agent/
 │   ├── diff/                   # Unified diff parser + chunker + filter
 │   ├── prompt/                 # Review prompt builder (react / plan-execute)
 │   ├── cognition/              # gRPC client → agent-go cognition
+│   ├── reviewer/               # Orchestrates diff → chunk → cognition → post
 │   ├── review/                 # JSON parser → GitHub review poster
 │   ├── store/                  # SQLite: review history + audit log
 │   ├── otel/                   # OpenTelemetry tracing
@@ -214,7 +223,7 @@ stream, err := svc.Run(ctx, &agentv1.RunRequest{
 // Collect events...
 ```
 
-No LLM SDK, no prompt templates, no tool definitions in this repo. agent-go handles the entire Agent loop.
+No LLM SDK and no tool definitions in this repo — agent-go handles the entire Agent loop. This repo only builds the review prompts it sends over gRPC.
 
 ## Evaluation
 

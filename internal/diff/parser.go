@@ -66,34 +66,28 @@ func parseFileName(line string) string {
 }
 
 // ChunkBySize 将文件 diff 按最大行数分块。
-// 单块 > maxLines 行则尝试在 @@ hunk 边界处分割。
+// 单个文件超过 maxLines 行时，在 @@ hunk 边界处切分，尽量保证每块 ≤ maxLines 行。
 func ChunkBySize(files []FileDiff, maxLines int) [][]FileDiff {
 	if maxLines <= 0 {
 		maxLines = 500
 	}
 
+	// 先展开：把超过 maxLines 行的大文件在 hunk 边界处切分。
+	var expanded []FileDiff
+	for _, f := range files {
+		expanded = append(expanded, splitLargeFile(f, maxLines)...)
+	}
+
+	// 再贪心分组。
 	var chunks [][]FileDiff
 	var currentChunk []FileDiff
 	currentLines := 0
-
-	for _, f := range files {
-		if f.Lines > maxLines {
-			// 大文件：先 flush 当前 chunk，再单独成块
-			if len(currentChunk) > 0 {
-				chunks = append(chunks, currentChunk)
-				currentChunk = nil
-				currentLines = 0
-			}
-			chunks = append(chunks, []FileDiff{f})
-			continue
-		}
-
+	for _, f := range expanded {
 		if currentLines+f.Lines > maxLines && len(currentChunk) > 0 {
 			chunks = append(chunks, currentChunk)
 			currentChunk = nil
 			currentLines = 0
 		}
-
 		currentChunk = append(currentChunk, f)
 		currentLines += f.Lines
 	}
@@ -103,6 +97,37 @@ func ChunkBySize(files []FileDiff, maxLines int) [][]FileDiff {
 	}
 
 	return chunks
+}
+
+// splitLargeFile 将超过 maxLines 行的单个文件在 @@ hunk 边界处切分为多个 FileDiff。
+// 若无法切分（无 hunk 边界、空 Hunk 或单个超长 hunk），保持原样返回。
+func splitLargeFile(f FileDiff, maxLines int) []FileDiff {
+	if f.Lines <= maxLines || f.Hunk == "" {
+		return []FileDiff{f}
+	}
+
+	lines := strings.Split(f.Hunk, "\n")
+	var parts []FileDiff
+	var cur strings.Builder
+	curLines := 0
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "@@") && curLines > 0 {
+			parts = append(parts, FileDiff{FileName: f.FileName, Hunk: cur.String(), Lines: curLines})
+			cur.Reset()
+			curLines = 0
+		}
+		cur.WriteString(line + "\n")
+		curLines++
+	}
+	if curLines > 0 {
+		parts = append(parts, FileDiff{FileName: f.FileName, Hunk: cur.String(), Lines: curLines})
+	}
+
+	if len(parts) <= 1 {
+		return []FileDiff{f}
+	}
+	return parts
 }
 
 // SkipGeneratedFiles 过滤掉生成文件（lock 文件、generated 标记、binary 文件等）。
@@ -173,10 +198,11 @@ func CalcPRSize(allFiles, filtered []FileDiff) PRSize {
 	return s
 }
 
-// ShouldUsePlanExecute 判断是否应使用 Plan-Execute 模式。
-// 阈值：10+ 个有效文件，或 3000+ 行变更。
+// ShouldUsePlanExecute 判断 PR 复杂度是否值得用 Plan-Execute 模式（10+ 个有效文件）。
+// 注意：能否真正使用还取决于 diff 能否塞进单 prompt（约 800 行）。
+// 行数过大的 PR 应走 chunked react 而非 plan-execute，否则 prompt 会被截断。
 func ShouldUsePlanExecute(size PRSize) bool {
-	return size.Files >= 10 || size.Lines >= 3000
+	return size.Files >= 10
 }
 
 // isGeneratedFile 判断是否为生成文件。

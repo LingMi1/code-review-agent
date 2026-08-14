@@ -53,9 +53,9 @@ GitHub PR webhook / 手动触发
 
 - **真实 PR 处理**：处理 `opened`、`synchronize`、`reopened` 三类 PR 事件
 - **HMAC-SHA256 Webhook 验签**：防止伪造请求
-- **Diff 分块**：大 PR 按文件拆成 ≤800 行的块，逐块独立审查后合并
+- **Diff 分块**：大 PR 按文件拆成约 800 行的块（大文件会在 hunk 边界进一步切分），逐块独立审查后合并
 - **结构化 JSON 输出**：LLM 返回可被程序解析的审查结果（文件/行号/严重级/类别/建议）
-- **优雅降级**：JSON 解析失败时回退为纯文本评论
+- **优雅降级**：单次审查在 JSON 解析失败时回退为纯文本评论
 - **GitHub API 限流处理**：遵循 `Retry-After` 响应头自动重试
 - **去重**：基于 webhook delivery-id 去重，防止重复审查
 - **生成文件过滤**：跳过 lockfile、protobuf stub、vendor 目录、二进制文件
@@ -64,12 +64,12 @@ GitHub PR webhook / 手动触发
 
 ### 成本控制
 
-- **模型路由**：`react` 模式 → agent-go `executor` 角色（默认 DeepSeek，便宜）；`plan_execute` 模式 → `planner` 角色（可通过 `COGNITION_PLANNER_MODEL` 切换到更强模型）
-- **Prompt 截断**：prompt 上限 32KB，超长 hunk 在构造前裁剪
+- **模型路由**：`react` 模式 → agent-go `executor` 角色（默认 DeepSeek，便宜）；`plan_execute` 模式 → agent-go `planner` 角色（由 agent-go 通过其自身的 `COGNITION_PLANNER_MODEL` 选择更强模型）
+- **Prompt 截断**：prompt 上限 32000 字节（约 31 KB），超长 hunk 在构造前裁剪
 
 ### 多 Agent（Plan-Execute）
 
-复杂 PR（10+ 文件）使用 **plan-execute 模式**审查：Agent 先把审查任务拆解为独立子任务（安全、bug 检测、性能、代码质量），并行执行后汇总为一份结构化审查。
+当 PR 文件数达到 10+ 且整份 diff 能塞进单条 prompt 时，使用 **plan-execute 模式**审查：Agent 先把审查任务拆解为独立子任务（安全、bug 检测、性能、代码质量），并行执行后汇总为一份结构化审查。diff 过大时则回退为分块 react 审查，避免 prompt 被截断。
 
 ### 安全与可靠性
 
@@ -77,11 +77,11 @@ GitHub PR webhook / 手动触发
 - **Panic 恢复**：中间件捕获 handler 中的 panic，记录堆栈后返回 500，避免进程崩溃
 - **ReadHeaderTimeout**：5 秒请求头读取超时，抵御 slowloris 慢速攻击
 - **常量时间 token 比较**：API token 校验使用 `crypto/subtle.ConstantTimeCompare`，防止时序攻击
-- **启动时配置校验**：所有必填配置在启动时集中校验，缺少关键项时拒绝启动
+- **启动时配置校验**：`GITHUB_TOKEN` 缺失时拒绝启动；`WEBHOOK_SECRET` 与 `API_TOKEN` 可选，未设置时会禁用验签/鉴权并给出警告
 
 ### 可观测性
 
-- **OpenTelemetry**：真正的 OTel Go SDK + OTLP gRPC exporter，通过 W3C TraceContext（`otelgrpc` + `otelhttp`）实现 HTTP → gRPC 链路追踪
+- **OpenTelemetry**：真正的 OTel Go SDK + OTLP gRPC exporter，跨 HTTP → gRPC 边界通过 W3C TraceContext 传播（gRPC 客户端用 `otelgrpc`，HTTP 侧用自研中间件埋点）
 - **追踪配置**：设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 将 trace 发送到 collector（如 Jaeger/Tempo）；未设置时本地采样但不导出
 - **端到端追踪**：在 agent-go 认知面同样开启 OTel（`COGNITION_OTEL_ENABLED=true` + `COGNITION_OTEL_EXPORTER_OTLP_ENDPOINT` 指向同一 collector），即可把 Go 与 Python 两段 span 串进同一条 trace
 - **`X-Trace-ID`**：每个响应都携带 trace ID 头，用于关联日志与 trace
@@ -92,7 +92,7 @@ GitHub PR webhook / 手动触发
 ### 前端界面
 
 - **React + TypeScript + Vite**：审查列表页和详情页
-- **SSE 实时流**：通过 `/api/reviews/stream` 实时展示 Agent 思考过程
+- **SSE 实时进度**：通过 `/api/reviews/stream` 推送审查生命周期事件（started/progress/completed/failed）
 - **手动触发**：无需 webhook，直接在 UI 上对任意 PR 触发审查
 
 ### 评估体系
@@ -107,6 +107,7 @@ GitHub PR webhook / 手动触发
 
 - Go 1.25+
 - Docker（用于 agent-go 认知面）
+- 将 [agent-go](https://github.com/LingMi1/agent-go) 仓库 clone 到同级目录（`docker compose` 构建认知面镜像需要）
 - 具备 `repo` 权限的 GitHub Personal Access Token
 - LLM API key（DeepSeek 或 Anthropic）
 
@@ -124,15 +125,22 @@ cp .env.example .env
 # 编辑 .env 填入你的 token
 ```
 
-### 3. 启动 agent-go 认知面
+### 3. 一键启动（认知面 + 应用）
+
+```bash
+export GITHUB_TOKEN=ghp_xxxx
+export LLM_API_KEY=sk-xxxx
+docker compose up -d --build
+```
+
+该命令会同时构建并运行 agent-go 认知面与本应用，应用通过 Docker 内部网络（`cognition:50051`）访问认知面。
+
+### 4. 本地运行服务（可选）
+
+如果你更想在本机直接跑 Go 服务，需要先暴露认知面的 gRPC 端口：取消 `docker-compose.yml` 中 `ports: "50051:50051"` 的注释（或本机原生运行 agent-go 认知面），然后：
 
 ```bash
 docker compose up -d cognition
-```
-
-### 4. 启动服务
-
-```bash
 export GITHUB_TOKEN=ghp_xxxx
 export WEBHOOK_SECRET=mysecret
 export COGNITION_ADDR=localhost:50051
@@ -180,12 +188,13 @@ code-review-agent/
 │   ├── diff/                   # Unified diff 解析器 + 分块 + 过滤
 │   ├── prompt/                 # 审查 prompt 构造（react / plan-execute）
 │   ├── cognition/              # gRPC 客户端 → agent-go 认知面
+│   ├── reviewer/               # 编排 diff → 分块 → 认知面 → 发布
 │   ├── review/                 # JSON 解析 → GitHub 审查发布
 │   ├── store/                  # SQLite：审查历史 + 审计日志
 │   ├── otel/                   # OpenTelemetry 追踪
 │   ├── metrics/                # Prometheus /metrics 端点
 │   ├── middleware/             # HTTP 中间件（OTel 埋点）
-│   └── sse/                    # SSE 广播中心（实时 Agent 流）
+│   └── sse/                    # SSE 广播中心（实时审查进度）
 ├── eval/                       # 评估框架
 │   ├── corpus/                 # 18 个标注测试 PR
 │   ├── expected/               # 每个用例的期望问题
@@ -214,7 +223,7 @@ stream, err := svc.Run(ctx, &agentv1.RunRequest{
 // 收集事件...
 ```
 
-本仓库不含 LLM SDK、prompt 模板、工具定义。agent-go 负责整个 Agent 循环。
+本仓库不含 LLM SDK 和工具定义——agent-go 负责整个 Agent 循环；本仓库只负责构造通过 gRPC 发送的审查 prompt。
 
 ## 评估
 
@@ -298,6 +307,6 @@ Agent 返回结构化 JSON：
 
 欢迎贡献代码！请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。如发现安全问题，请按 [SECURITY.md](SECURITY.md) 中的流程上报。
 
-## License
+## 许可证
 
 MIT

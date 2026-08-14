@@ -59,7 +59,11 @@ paths:
         '200':
           description: Webhook received and processing
         '401':
-          description: Signature verification failed
+          description: Signature verification failed (plain-text body — GitHub only inspects the status code)
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /api/reviews:
     get:
@@ -106,6 +110,10 @@ paths:
                     type: string
         '401':
           description: Unauthorized (API token required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/reviews/{id}:
     get:
@@ -125,6 +133,10 @@ paths:
                 $ref: '#/components/schemas/ReviewRecord'
         '404':
           description: Review not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/reviews/stream:
     get:
@@ -149,6 +161,13 @@ components:
       type: http
       scheme: bearer
   schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
     ReviewRecord:
       type: object
       properties:

@@ -1,6 +1,10 @@
 package diff
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func sampleDiff() string {
 	return `diff --git a/main.go b/main.go
@@ -157,12 +161,40 @@ func TestCalcPRSize(t *testing.T) {
 
 func TestShouldUsePlanExecute(t *testing.T) {
 	if ShouldUsePlanExecute(PRSize{Files: 9, Lines: 100}) {
-		t.Error("9 files 100 lines should NOT use plan-execute")
+		t.Error("9 files should NOT use plan-execute")
 	}
 	if !ShouldUsePlanExecute(PRSize{Files: 10, Lines: 100}) {
 		t.Error("10 files should use plan-execute")
 	}
-	if !ShouldUsePlanExecute(PRSize{Files: 1, Lines: 3000}) {
-		t.Error("3000 lines should use plan-execute")
+	// 文件少但行数大：不应使用 plan-execute，否则整份 diff 会被 32KB prompt 截断。
+	if ShouldUsePlanExecute(PRSize{Files: 1, Lines: 3000}) {
+		t.Error("1 file with 3000 lines should NOT use plan-execute")
+	}
+}
+
+func TestChunkBySizeSplitsLargeFile(t *testing.T) {
+	// 构造一个含 3 个 hunk 的单文件，强制在 hunk 边界切分。
+	var hunk strings.Builder
+	for h := 0; h < 3; h++ {
+		fmt.Fprintf(&hunk, "@@ -%d,5 +%d,5 @@\n", h*10+1, h*10+1)
+		for j := 0; j < 5; j++ {
+			fmt.Fprintf(&hunk, "+line %d\n", h*10+j)
+		}
+	}
+	f := FileDiff{FileName: "big.go", Hunk: hunk.String(), Lines: 18}
+
+	chunks := ChunkBySize([]FileDiff{f}, 6)
+	if len(chunks) < 2 {
+		t.Fatalf("expected large file to be split into multiple chunks, got %d", len(chunks))
+	}
+	for _, c := range chunks {
+		for _, part := range c {
+			if part.FileName != "big.go" {
+				t.Errorf("expected filename big.go, got %q", part.FileName)
+			}
+			if part.Lines == 0 {
+				t.Error("split part should have non-zero lines")
+			}
+		}
 	}
 }
