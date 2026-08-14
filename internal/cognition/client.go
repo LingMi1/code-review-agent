@@ -257,10 +257,11 @@ func collectFinalResult(runID string, stream agentv1.CognitionService_RunClient)
 	return finalText, nil
 }
 
-// truncate 截断字符串用于日志。
+// truncate 截断字符串用于日志。按 rune 截断，避免切割多字节字符产生非法 UTF-8。
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	rs := []rune(s)
+	if len(rs) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(rs[:maxLen]) + "..."
 }
