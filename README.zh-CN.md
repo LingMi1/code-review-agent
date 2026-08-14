@@ -65,7 +65,7 @@ GitHub PR webhook / 手动触发
 ### 成本控制
 
 - **模型路由**：`react` 模式 → agent-go `executor` 角色（默认 DeepSeek，便宜）；`plan_execute` 模式 → agent-go `planner` 角色（由 agent-go 通过其自身的 `COGNITION_PLANNER_MODEL` 选择更强模型）
-- **Prompt 截断**：prompt 上限 32000 字节（约 31 KB），超长 hunk 在构造前裁剪
+- **Prompt 截断**：prompt 上限 32000 字节（约 31 KB）；超长 diff 通过约 800 行分块而非静默丢弃代码来适配上下文
 
 ### 多 Agent（Plan-Execute）
 

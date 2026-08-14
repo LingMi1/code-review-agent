@@ -47,6 +47,11 @@ func (c *Client) PRDiff(ctx context.Context, owner, repo string, prNumber int) (
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("fetch PR diff: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20)) // 5MB limit
 	if err != nil {
 		return "", fmt.Errorf("read PR diff: %w", err)

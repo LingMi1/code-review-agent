@@ -333,8 +333,9 @@ func (s *Service) reviewChunks(ctx context.Context, prTitle, sessionBase string,
 
 		out, perr := review.ParseResult(result.Text)
 		if perr != nil {
-			slog.WarnContext(ctx, "chunk output unparseable, skipped", "chunk", i+1, "error", perr)
-			continue
+			// 分块解析失败不能静默跳过：否则会发布一份缺失部分覆盖的 review。
+			// 改为让整次审查失败，由上层标记 failed 并记录指标。
+			return nil, totalDuration, totalTextLen, fmt.Errorf("chunk %d/%d: parse result: %w", i+1, len(chunks), perr)
 		}
 		outputs = append(outputs, out)
 	}

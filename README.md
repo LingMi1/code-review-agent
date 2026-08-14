@@ -65,7 +65,7 @@ GitHub PR webhook / manual trigger
 ### Cost Control
 
 - **Model Routing**: `react` mode → agent-go `executor` role (default DeepSeek, cheap); `plan_execute` mode → agent-go `planner` role (agent-go selects a stronger model via its own `COGNITION_PLANNER_MODEL`)
-- **Prompt Truncation**: Prompts capped at 32000 bytes (~31 KB) and oversized hunks trimmed before construction
+- **Prompt Truncation**: Prompts capped at 32000 bytes (~31 KB); oversized diffs are split into ~800-line chunks instead of silently dropping code
 
 ### Multi-Agent (Plan-Execute)
 
