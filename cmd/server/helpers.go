@@ -3,47 +3,24 @@ package main
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // writeJSON 写入 JSON 响应。
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
-}
-
-var (
-	allowedOriginsOnce sync.Once
-	allowedOriginsSet  map[string]bool
-)
-
-// allowedOrigins 从环境变量 ALLOWED_ORIGINS 读取允许的 CORS origin（逗号分隔）。
-func allowedOrigins() map[string]bool {
-	allowedOriginsOnce.Do(func() {
-		raw := os.Getenv("ALLOWED_ORIGINS")
-		if raw == "" {
-			raw = "http://localhost:5173"
-		}
-		set := map[string]bool{}
-		for _, o := range strings.Split(raw, ",") {
-			o = strings.TrimSpace(o)
-			if o != "" {
-				set[o] = true
-			}
-		}
-		allowedOriginsSet = set
-	})
-	return allowedOriginsSet
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("writeJSON: encode failed", "error", err)
+	}
 }
 
 // enableCORS 为 API 响应添加 CORS 头，仅允许白名单内的 origin。
-func enableCORS(w http.ResponseWriter, r *http.Request) {
+func enableCORS(w http.ResponseWriter, r *http.Request, origins map[string]bool) {
 	origin := r.Header.Get("Origin")
-	if origin != "" && allowedOrigins()[origin] {
+	if origin != "" && origins[origin] {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
 	}
@@ -51,19 +28,16 @@ func enableCORS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Trace-ID")
 }
 
-// parseID 从 URL path 中提取数字 ID。
-func parseID(path, prefix string) int {
-	idStr := strings.TrimPrefix(path, prefix)
-	idStr = strings.TrimSuffix(idStr, "/")
-	id, _ := strconv.Atoi(idStr)
-	return id
+// parseID 从 URL path 中提取数字 ID。无效时返回 (0, error)。
+func parseID(path, prefix string) (int, error) {
+	idStr := strings.TrimSuffix(strings.TrimPrefix(path, prefix), "/")
+	return strconv.Atoi(idStr)
 }
 
 // authorizeManualTrigger 校验手动触发请求的 API token。
-// 若未配置 API_TOKEN，则允许（开发模式）。
-func authorizeManualTrigger(r *http.Request) bool {
-	token := os.Getenv("API_TOKEN")
-	if token == "" {
+// apiToken 为空时允许（开发模式）。
+func authorizeManualTrigger(r *http.Request, apiToken string) bool {
+	if apiToken == "" {
 		return true
 	}
 	// 尝试 Bearer header
@@ -71,13 +45,13 @@ func authorizeManualTrigger(r *http.Request) bool {
 	const prefix = "Bearer "
 	if strings.HasPrefix(auth, prefix) {
 		provided := []byte(strings.TrimPrefix(auth, prefix))
-		if subtle.ConstantTimeCompare(provided, []byte(token)) == 1 {
+		if subtle.ConstantTimeCompare(provided, []byte(apiToken)) == 1 {
 			return true
 		}
 	}
 	// 尝试 X-API-Token header
 	if xToken := r.Header.Get("X-API-Token"); xToken != "" {
-		if subtle.ConstantTimeCompare([]byte(xToken), []byte(token)) == 1 {
+		if subtle.ConstantTimeCompare([]byte(xToken), []byte(apiToken)) == 1 {
 			return true
 		}
 	}

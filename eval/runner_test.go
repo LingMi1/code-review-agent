@@ -2,7 +2,6 @@ package eval
 
 import (
 	"testing"
-	"time"
 )
 
 func TestIsMatch(t *testing.T) {
@@ -74,7 +73,7 @@ func TestEvaluateCaseNoDoubleCount(t *testing.T) {
 		{File: "upload_handler.go", Line: 14, Category: "bug"},
 	}
 
-	r := evaluateCase(EvalCase{ID: "case-016", Name: "x", Category: "security"}, exp, found, time.Millisecond)
+	r := evaluateCase(EvalCase{ID: "case-016", Name: "x", Category: "security"}, exp, found)
 
 	if r.TruePositives != 3 {
 		t.Errorf("TruePositives = %d, want 3 (no double count)", r.TruePositives)
@@ -105,7 +104,7 @@ func TestEvaluateCaseFalsePositive(t *testing.T) {
 		{File: "a.go", Line: 50, Category: "style"}, // FP（行号与分类都不匹配）
 	}
 
-	r := evaluateCase(EvalCase{ID: "case-x", Name: "x", Category: "bug"}, exp, found, time.Millisecond)
+	r := evaluateCase(EvalCase{ID: "case-x", Name: "x", Category: "bug"}, exp, found)
 
 	if r.TruePositives != 1 {
 		t.Errorf("TruePositives = %d, want 1", r.TruePositives)

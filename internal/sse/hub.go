@@ -131,7 +131,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fmt.Fprintf(w, ": keepalive\n\n")
+			_, _ = fmt.Fprintf(w, ": keepalive\n\n")
 			flusher.Flush()
 		case evt, ok := <-ch:
 			if !ok {
@@ -141,7 +141,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if s, ok := data.(string); ok {
 				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Type, s)
 			} else {
-				fmt.Fprintf(w, "event: %s\ndata: %v\n\n", evt.Type, data)
+				_, _ = fmt.Fprintf(w, "event: %s\ndata: %v\n\n", evt.Type, data)
 			}
 			flusher.Flush()
 		}

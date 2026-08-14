@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -52,7 +53,9 @@ func main() {
 	}
 
 	// OpenTelemetry 追踪
-	os.Setenv("OTEL_SERVICE_NAME", cfg.OtelServiceName)
+	if err := os.Setenv("OTEL_SERVICE_NAME", cfg.OtelServiceName); err != nil {
+		slog.Error("failed to set OTEL_SERVICE_NAME", "error", err)
+	}
 	shutdown, err := otel.Init(context.Background())
 	if err != nil {
 		slog.Error("failed to init OpenTelemetry", "error", err)
@@ -93,14 +96,17 @@ func main() {
 	// 审查服务：编排 diff 拉取 → 认知面调用 → 结果投递。
 	reviewSvc := reviewer.New(db, cogClient, ghClient, sseHub, m, 5)
 
+	// 手动触发审查的 WaitGroup（webhook handler 自带 WaitGroup）
+	var manualWG sync.WaitGroup
+
 	// webhook 回调：从 webhook event 提取参数后调用审查服务
-	onPR := func(event *webhook.PullRequestEvent) error {
+	onPR := func(ctx context.Context, event *webhook.PullRequestEvent) error {
 		parts := strings.SplitN(event.RepoFullName, "/", 2)
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid repo: %s", event.RepoFullName)
 		}
 		db.AuditLog("webhook.received", event.PRNumber, event.RepoFullName, event.Action)
-		return reviewSvc.Review(context.Background(), parts[0], parts[1], event.PRNumber, event.HeadSHA, 0)
+		return reviewSvc.Review(ctx, parts[0], parts[1], event.PRNumber, event.HeadSHA, 0)
 	}
 
 	// HTTP server
@@ -109,7 +115,7 @@ func main() {
 	mux.Handle("/webhook", wh)
 	mux.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	mux.Handle("/metrics", m) // Prometheus 指标端点
 
@@ -120,14 +126,14 @@ func main() {
 	// GET  /api/reviews        → 列表
 	// POST /api/reviews        → 手动触发审查 {owner, repo, pr_number}
 	mux.HandleFunc("/api/reviews", func(w http.ResponseWriter, r *http.Request) {
-		enableCORS(w, r)
+		enableCORS(w, r, cfg.AllowedOrigins)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 		if r.Method == http.MethodPost {
 			// 手动触发审查：校验 API token（若已配置）
-			if !authorizeManualTrigger(r) {
+			if !authorizeManualTrigger(r, cfg.APIToken) {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -156,7 +162,12 @@ func main() {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			go reviewSvc.Review(context.Background(), req.Owner, req.Repo, req.PRNumber, "", reviewID)
+			manualWG.Add(1)
+			go func() {
+				defer manualWG.Done()
+				ctx := context.WithoutCancel(r.Context())
+				reviewSvc.Review(ctx, req.Owner, req.Repo, req.PRNumber, "", reviewID)
+			}()
 			writeJSON(w, map[string]interface{}{
 				"review_id": reviewID,
 				"status":    "started",
@@ -173,12 +184,16 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/reviews/", func(w http.ResponseWriter, r *http.Request) {
-		enableCORS(w, r)
+		enableCORS(w, r, cfg.AllowedOrigins)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		id := parseID(r.URL.Path, "/api/reviews/")
+		id, err := parseID(r.URL.Path, "/api/reviews/")
+		if err != nil {
+			http.Error(w, "invalid review ID", http.StatusBadRequest)
+			return
+		}
 		review, err := db.GetReview(int64(id))
 		if err != nil {
 			http.Error(w, "not found", http.StatusNotFound)
@@ -201,15 +216,20 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second, // 防 slowloris
 	}
 
-	// 优雅关闭
+	// 优雅关闭：等待 HTTP 连接 + in-flight review goroutine
 	go func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
 		slog.Info("shutting down...")
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		srv.Shutdown(ctx)
+		if err := srv.Shutdown(ctx); err != nil {
+			slog.Error("server shutdown error", "error", err)
+		}
+		wh.Wait()   // webhook 触发的 review
+		manualWG.Wait() // 手动触发的 review
+		slog.Info("graceful shutdown complete")
 	}()
 
 	slog.Info("code-review-agent starting",

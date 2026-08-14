@@ -3,7 +3,6 @@ package eval
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -42,7 +41,7 @@ func mockReview(diff string, language string) ([]FoundIssue, error) {
 		{`ioutil.ReadFile(`, "reader.go", 8, "medium", "bug", "ReadFile without size limit"},
 		{`i := 0; i < 1000000`, "loop.go", 5, "medium", "performance", "Hardcoded loop bound"},
 		{`for {`, "loop.go", 5, "high", "bug", "Infinite loop without break condition"},
-		// 多 bug 用例：每个文件多个问题，line 为“目标行号 - 命中序号”以配合下方 fileHits 偏移。
+		// 多 bug 用例：每个文件多个问题，line 为"目标行号 - 命中序号"以配合下方 fileHits 偏移。
 		{`filepath.Join("/uploads", name)`, "upload_handler.go", 11, "high", "security", "Path traversal via unsanitized filename"},
 		{`io.ReadAll(r.Body)`, "upload_handler.go", 11, "medium", "bug", "Unbounded request body read without size limit"},
 		{`f, _ := os.Create(path)`, "upload_handler.go", 11, "medium", "bug", "Error from os.Create ignored"},
@@ -69,7 +68,6 @@ func mockReview(diff string, language string) ([]FoundIssue, error) {
 		}
 	}
 
-	_ = language
 	return issues, nil
 }
 
@@ -81,15 +79,3 @@ func unmarshalAsIssues(data []byte) ([]FoundIssue, error) {
 	}
 	return issues, nil
 }
-
-// truncateFileName 截短文件名用于显示。
-func truncateFileName(name string, maxLen int) string {
-	if len(name) <= maxLen {
-		return name
-	}
-	return "..." + name[len(name)-maxLen+3:]
-}
-
-// suppress unused warns
-var _ = fmt.Sprintf
-var _ = truncateFileName

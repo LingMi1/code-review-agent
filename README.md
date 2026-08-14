@@ -71,6 +71,14 @@ GitHub PR webhook / manual trigger
 
 Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first decomposes the review into independent sub-tasks (security, bug detection, performance, code quality), executes each in parallel, then aggregates results into a single structured review.
 
+### Security & Reliability
+
+- **Rate Limiting**: Per-IP sliding-window limiter (120 req/min) returns `429 Too Many Requests` when exceeded
+- **Panic Recovery**: Middleware catches handler panics, logs the stack trace, and returns 500 instead of crashing the process
+- **ReadHeaderTimeout**: 5s header-read timeout mitigates slowloris-style attacks
+- **Constant-Time Token Comparison**: API token checks use `crypto/subtle.ConstantTimeCompare` to prevent timing attacks
+- **Startup Config Validation**: All required configuration is validated on boot — the server refuses to start when critical env vars are missing
+
 ### Observability
 
 - **OpenTelemetry**: Real OTel Go SDK with OTLP gRPC exporter. Spans flow across HTTP → gRPC via W3C TraceContext (`otelgrpc` + `otelhttp`).
@@ -79,6 +87,7 @@ Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first d
 - **`X-Trace-ID`**: Every response carries a trace ID header for correlating logs and traces.
 - **Prometheus**: `/metrics` endpoint with review counts, latency, and error rates
 - **Structured Logging**: `log/slog` with `trace_id` / `span_id` fields
+- **DB Migration Versioning**: SQLite schema tracked via `PRAGMA user_version`; pending migrations apply automatically on startup
 
 ### Frontend Dashboard
 
@@ -106,9 +115,6 @@ Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first d
 ```bash
 git clone https://github.com/LingMi1/code-review-agent.git
 cd code-review-agent
-
-# agent-go must be at ../agent-go/agent-go (go.mod replace)
-# If not, adjust the replace directive in go.mod
 ```
 
 ### 2. Configure Environment
@@ -189,7 +195,7 @@ code-review-agent/
 ├── assets/                     # Screenshots used in this README
 ├── docker-compose.yml          # cognition + app
 ├── Dockerfile                  # Multi-stage Go build
-└── go.mod                      # replace → ../agent-go/agent-go/control-plane
+└── go.mod                      # Module definition
 ```
 
 ## gRPC Integration
@@ -274,6 +280,8 @@ The agent returns structured JSON:
 | `/api/reviews/:id` | GET | Get review detail |
 | `/api/reviews/stream` | GET | SSE stream of review events |
 
+An OpenAPI 3.0 specification of these endpoints is available at [`docs/openapi.yaml`](docs/openapi.yaml).
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -285,6 +293,10 @@ The agent returns structured JSON:
 | Observability | OpenTelemetry, Prometheus, `log/slog` |
 | Deployment | Docker, Docker Compose |
 | LLM | DeepSeek / Claude (via agent-go) |
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Found a security issue? Please follow the disclosure process in [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -71,6 +71,14 @@ GitHub PR webhook / 手动触发
 
 复杂 PR（10+ 文件）使用 **plan-execute 模式**审查：Agent 先把审查任务拆解为独立子任务（安全、bug 检测、性能、代码质量），并行执行后汇总为一份结构化审查。
 
+### 安全与可靠性
+
+- **IP 限流**：基于滑动窗口的按 IP 限流（120 次/分钟），超限返回 `429 Too Many Requests`
+- **Panic 恢复**：中间件捕获 handler 中的 panic，记录堆栈后返回 500，避免进程崩溃
+- **ReadHeaderTimeout**：5 秒请求头读取超时，抵御 slowloris 慢速攻击
+- **常量时间 token 比较**：API token 校验使用 `crypto/subtle.ConstantTimeCompare`，防止时序攻击
+- **启动时配置校验**：所有必填配置在启动时集中校验，缺少关键项时拒绝启动
+
 ### 可观测性
 
 - **OpenTelemetry**：真正的 OTel Go SDK + OTLP gRPC exporter，通过 W3C TraceContext（`otelgrpc` + `otelhttp`）实现 HTTP → gRPC 链路追踪
@@ -79,6 +87,7 @@ GitHub PR webhook / 手动触发
 - **`X-Trace-ID`**：每个响应都携带 trace ID 头，用于关联日志与 trace
 - **Prometheus**：`/metrics` 端点对外提供审查数量、延迟、错误率
 - **结构化日志**：`log/slog` 带 `trace_id` / `span_id` 字段
+- **数据库迁移版本管理**：SQLite schema 通过 `PRAGMA user_version` 追踪版本，启动时自动应用未执行的迁移
 
 ### 前端界面
 
@@ -106,9 +115,6 @@ GitHub PR webhook / 手动触发
 ```bash
 git clone https://github.com/LingMi1/code-review-agent.git
 cd code-review-agent
-
-# agent-go 需位于 ../agent-go/agent-go（go.mod replace）
-# 如位置不同，调整 go.mod 中的 replace 指令
 ```
 
 ### 2. 配置环境
@@ -189,7 +195,7 @@ code-review-agent/
 ├── assets/                     # README 使用的截图
 ├── docker-compose.yml          # cognition + app
 ├── Dockerfile                  # 多阶段 Go 构建
-└── go.mod                      # replace → ../agent-go/agent-go/control-plane
+└── go.mod                      # 模块定义
 ```
 
 ## gRPC 集成
@@ -274,6 +280,8 @@ Agent 返回结构化 JSON：
 | `/api/reviews/:id` | GET | 获取审查详情 |
 | `/api/reviews/stream` | GET | 审查事件的 SSE 流 |
 
+各端点的 OpenAPI 3.0 规范见 [`docs/openapi.yaml`](docs/openapi.yaml)。
+
 ## 技术栈
 
 | 层 | 技术 |
@@ -285,6 +293,10 @@ Agent 返回结构化 JSON：
 | 可观测性 | OpenTelemetry、Prometheus、`log/slog` |
 | 部署 | Docker、Docker Compose |
 | LLM | DeepSeek / Claude（via agent-go） |
+
+## 贡献
+
+欢迎贡献代码！请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。如发现安全问题，请按 [SECURITY.md](SECURITY.md) 中的流程上报。
 
 ## License
 

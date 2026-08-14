@@ -2,6 +2,7 @@
 package webhook
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,8 +14,8 @@ import (
 	"time"
 )
 
-// PRHandler 是收到 PR 事件时的回调。
-type PRHandler func(event *PullRequestEvent) error
+// PRHandler 是收到 PR 事件时的回调。携带 context 以传播 trace 和取消信号。
+type PRHandler func(ctx context.Context, event *PullRequestEvent) error
 
 // PullRequestEvent 是 webhook 中 pull_request 事件的精简表示。
 type PullRequestEvent struct {
@@ -31,9 +32,10 @@ type PullRequestEvent struct {
 type Handler struct {
 	secret    string
 	onPR      PRHandler
+	wg        sync.WaitGroup       // 跟踪 in-flight review goroutine
 	mu        sync.Mutex
-	seen      map[string]time.Time      // delivery_id → 首次接收时间
-	seenClean time.Time                 // 上次清理 seen 的时间
+	seen      map[string]time.Time // delivery_id → 首次接收时间
+	seenClean time.Time            // 上次清理 seen 的时间
 }
 
 // New 创建一个新的 webhook handler。
@@ -44,6 +46,11 @@ func New(secret string, onPR PRHandler) *Handler {
 		seen:      make(map[string]time.Time),
 		seenClean: time.Now(),
 	}
+}
+
+// Wait 等待所有 in-flight review goroutine 完成（用于优雅关闭）。
+func (h *Handler) Wait() {
+	h.wg.Wait()
 }
 
 // ServeHTTP 实现 http.Handler。
@@ -106,8 +113,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 6. 异步处理（立即返回 200 给 GitHub，避免 webhook 超时）
+	// 使用 context.WithoutCancel 保留 trace 链路但脱离请求生命周期
+	h.wg.Add(1)
 	go func() {
-		if err := h.onPR(payload); err != nil {
+		defer h.wg.Done()
+		ctx := context.WithoutCancel(r.Context())
+		if err := h.onPR(ctx, payload); err != nil {
 			slog.Error("webhook: PR handler failed", "pr", payload.PRNumber, "error", err)
 		}
 	}()

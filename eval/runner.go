@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 )
 
 // Run 加载测试用例，执行评估，输出报告。
@@ -47,11 +46,8 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 			continue
 		}
 
-		start := time.Now()
 		found, err := reviewFn(c.Diff, c.Language)
-		latency := time.Since(start)
-
-		result := evaluateCase(c, exp, found, latency)
+		result := evaluateCase(c, exp, found)
 		results = append(results, result)
 
 		if err == nil && result.Passed {
@@ -102,7 +98,7 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 }
 
 // evaluateCase 评估单个用例。
-func evaluateCase(c EvalCase, exp ExpectedResult, found []FoundIssue, latency time.Duration) CaseResult {
+func evaluateCase(c EvalCase, exp ExpectedResult, found []FoundIssue) CaseResult {
 	result := CaseResult{
 		CaseID:    c.ID,
 		CaseName:  c.Name,
@@ -158,7 +154,6 @@ func evaluateCase(c EvalCase, exp ExpectedResult, found []FoundIssue, latency ti
 
 	// 判定通过：F1 >= 0.5
 	result.Passed = result.F1 >= 0.5
-	_ = latency
 
 	return result
 }
