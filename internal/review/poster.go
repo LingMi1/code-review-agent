@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/LingMi1/code-review-agent/internal/github"
 
@@ -123,7 +124,12 @@ func truncateSummary(s string) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	cut := s[:maxLen]
+	// 按字节截断可能落在多字节 UTF-8 字符中间，回退到最近的合法 rune 边界。
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return cut + "..."
 }
 
 // parseResult 尝试从 LLM 输出中提取 JSON。

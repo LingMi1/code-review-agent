@@ -28,7 +28,7 @@ func mockReview(diff string, language string) ([]FoundIssue, error) {
 		{`api_key = "`, "config.go", 15, "high", "security", "Hardcoded API key"},
 		{"os.Open(", "file_handler.go", 30, "medium", "bug", "File opened without deferred close"},
 		{"file, err :=", "file_handler.go", 30, "medium", "bug", "Potential unclosed file handle"},
-		{"if err != nil", "file_handler.go", 32, "low", "style", "Missing error handling"},
+		{"_ := ioutil.ReadAll", "file_handler.go", 32, "medium", "bug", "Error from ReadAll ignored with blank identifier"},
 		{"http.Get(", "fetch.go", 18, "medium", "performance", "HTTP request without timeout"},
 		{"timeout = 0", "fetch.go", 18, "medium", "bug", "Zero timeout may cause hang"},
 		{"go func()", "worker.go", 55, "high", "bug", "Race condition risk in goroutine"},

@@ -170,6 +170,7 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 			resp.Body.Close()
 			retryAfter := resp.Header.Get("Retry-After")
 			slog.Warn("github: rate limited", "retry_after", retryAfter)
+			lastErr = fmt.Errorf("github rate limited (HTTP 429, Retry-After=%s)", retryAfter)
 			wait := 60 * time.Second
 			if d, err := time.ParseDuration(retryAfter + "s"); err == nil {
 				wait = d

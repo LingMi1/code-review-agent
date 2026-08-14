@@ -134,10 +134,15 @@ func writeJSONResponseFormat(b *strings.Builder) {
 func hunkTrim(f diff.FileDiff) string {
 	const maxLen = 6000
 	s := f.Hunk
-	if len(s) > maxLen {
-		return s[:maxLen] + "\n... (truncated)"
+	if len(s) <= maxLen {
+		return s
 	}
-	return s
+	cut := s[:maxLen]
+	// 按字节截断可能落在多字节 UTF-8 字符中间，回退到最近的合法 rune 边界。
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return cut + "\n... (truncated)"
 }
 
 // TruncatePrompt 确保 prompt 总长不超过 maxBytes 字节。

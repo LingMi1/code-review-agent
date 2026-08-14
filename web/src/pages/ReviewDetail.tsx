@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -44,11 +44,14 @@ export default function ReviewDetail() {
     return () => { cancelled = true; };
   }, [id]);
 
+  const closeRef = useRef<(() => void) | null>(null);
+
   const connectSSE = useCallback(() => {
-    if (!review) return () => {};
+    if (!review) return;
     const session = `pr-review-${review.repo_url}/${review.pr_number}`;
     setSseActive(true);
-    return subscribeSSE(
+    // 保存关闭函数，供组件卸载或状态切换时清理，避免 EventSource 泄漏。
+    closeRef.current = subscribeSSE(
       session,
       (evt) => {
         setSseLog((prev) => [...prev, evt]);
@@ -63,8 +66,12 @@ export default function ReviewDetail() {
 
   useEffect(() => {
     if (review?.status === 'running') {
-      return connectSSE();
+      connectSSE();
     }
+    return () => {
+      closeRef.current?.();
+      closeRef.current = null;
+    };
   }, [review?.status, connectSSE]);
 
   if (loading) {

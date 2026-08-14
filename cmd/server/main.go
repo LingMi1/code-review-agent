@@ -233,20 +233,12 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second, // 防 slowloris
 	}
 
-	// 优雅关闭：等待 HTTP 连接 + in-flight review goroutine
+	// 优雅关闭：等待 HTTP 连接 + in-flight review goroutine。
+	// ListenAndServe 必须在独立 goroutine 中运行，main 用 select 等待信号或错误；
+	// 否则 Shutdown 后 main 直接返回，in-flight review 会被进程退出直接杀死。
+	srvErr := make(chan error, 1)
 	go func() {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-		<-sig
-		slog.Info("shutting down...")
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(ctx); err != nil {
-			slog.Error("server shutdown error", "error", err)
-		}
-		wh.Wait()      // webhook 触发的 review
-		manualWG.Wait() // 手动触发的 review
-		slog.Info("graceful shutdown complete")
+		srvErr <- srv.ListenAndServe()
 	}()
 
 	slog.Info("code-review-agent starting",
@@ -254,8 +246,25 @@ func main() {
 		"cognition", cfg.CognitionAddr,
 		"metrics", fmt.Sprintf("%s/metrics", cfg.ListenAddr),
 	)
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		slog.Error("server error", "error", err)
-		os.Exit(1)
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-srvErr:
+		if err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	case <-sig:
+		slog.Info("shutting down...")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			slog.Error("server shutdown error", "error", err)
+		}
+		wh.Wait()       // webhook 触发的 review
+		manualWG.Wait() // 手动触发的 review
+		slog.Info("graceful shutdown complete")
 	}
 }

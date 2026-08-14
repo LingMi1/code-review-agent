@@ -46,15 +46,14 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 			continue
 		}
 
-		found, err := reviewFn(c.Diff, c.Language)
+		found, _ := reviewFn(c.Diff, c.Language)
 		result := evaluateCase(c, exp, found)
 		results = append(results, result)
 
-		if err == nil && result.Passed {
-			totalTP += result.TruePositives
-			totalFP += result.FalsePositives
-			totalFN += result.FalseNegatives
-		}
+		// Micro 指标汇总全部用例（无论是否通过），否则全局指标会系统性偏高。
+		totalTP += result.TruePositives
+		totalFP += result.FalsePositives
+		totalFN += result.FalseNegatives
 	}
 
 	// 4. 计算宏观指标（每个用例 F1 的均值）
@@ -80,7 +79,7 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 	if validCases > 0 {
 		report.MacroPrecision = sumPrecision / float64(validCases)
 		report.MacroRecall = sumRecall / float64(validCases)
-		report.MacroF1 = 2 * report.MacroPrecision * report.MacroRecall / (report.MacroPrecision + report.MacroRecall)
+		report.MacroF1 = sumF1 / float64(validCases) // 各用例 F1 的算术平均
 	}
 
 	// 微观指标（全部 issue 的全局 precision/recall）

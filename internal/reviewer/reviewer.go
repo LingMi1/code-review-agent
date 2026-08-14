@@ -110,7 +110,9 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 		}
 		if resultErr != nil {
 			if reviewID != 0 {
-				s.store.UpdateReview(reviewID, "failed", 0, "", "", resultErr.Error())
+				if err := s.store.UpdateReview(reviewID, "failed", 0, "", "", resultErr.Error()); err != nil {
+					slog.Error("update review failed", "review_id", reviewID, "error", err)
+				}
 			}
 			s.sse.Publish(sessionID, jsonEvent("review.failed", map[string]any{
 				"pr": prNumber, "status": "failed", "error": resultErr.Error(),
@@ -156,7 +158,9 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 
 	if len(chunks) == 0 {
 		slog.InfoContext(ctx, "no files to review (all generated/skipped)", "pr", prNumber)
-		s.store.UpdateReview(reviewID, "success", 0, "No reviewable files", "", "")
+		if err := s.store.UpdateReview(reviewID, "success", 0, "No reviewable files", "", ""); err != nil {
+			slog.Error("update review failed", "review_id", reviewID, "error", err)
+		}
 		s.sse.Publish(sessionID, jsonEvent("review.completed", map[string]any{
 			"pr": prNumber, "status": "success", "issues": 0, "duration_ms": 0,
 		}))
@@ -285,7 +289,9 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 	}
 
 	// 7. 更新审查记录（复用结构化结果）+ 指标 + 完成事件。
-	s.store.UpdateReview(reviewID, "success", issues, summary, totalDuration.String(), "")
+	if err := s.store.UpdateReview(reviewID, "success", issues, summary, totalDuration.String(), ""); err != nil {
+		slog.Error("update review failed", "review_id", reviewID, "error", err)
+	}
 	s.store.AuditLog("review.completed", prNumber, repoFullName,
 		fmt.Sprintf("issues=%d duration=%s", issues, totalDuration))
 
