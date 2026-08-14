@@ -230,7 +230,10 @@ func main() {
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second, // 防 slowloris
+		ReadHeaderTimeout: 5 * time.Second,   // 防 slowloris 慢头攻击
+		ReadTimeout:       30 * time.Second,  // 限制请求体读取（防 slow body）
+		IdleTimeout:       120 * time.Second, // 空闲 keep-alive 连接超时
+		// 注意：不设置 WriteTimeout，SSE 长连接需要无限写时长。
 	}
 
 	// 优雅关闭：等待 HTTP 连接 + in-flight review goroutine。

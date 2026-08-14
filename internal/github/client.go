@@ -61,10 +61,9 @@ func (c *Client) PRDiff(ctx context.Context, owner, repo string, prNumber int) (
 
 // ReviewComment 是一条 review 评论。
 type ReviewComment struct {
-	Path     string `json:"path"`
-	Position int    `json:"position,omitempty"` // diff 中的行号（传统方式）
-	Line     int    `json:"line,omitempty"`     // 新文件行号
-	Body     string `json:"body"`
+	Path string `json:"path"`
+	Line int    `json:"line,omitempty"` // 新文件行号（GitHub 默认 side=RIGHT）
+	Body string `json:"body"`
 }
 
 // PostReview 在 PR 上提交 review（含多条评论）。

@@ -48,15 +48,25 @@ func ParseResult(text string) (*ReviewOutput, error) {
 	return parseResult(text)
 }
 
-// MergeOutputs 合并分块审查的多段结构化结果：issues 拼接、summary 分段汇总。
+// MergeOutputs 合并分块审查的多段结构化结果：issues 拼接去重、summary 分段汇总。
+// 跨 chunk 边界时同一个问题可能被相邻两块各报一次，这里按 file+line+category 去重，
+// 避免向 PR 投递重复的内联评论。
 func MergeOutputs(outputs []*ReviewOutput) *ReviewOutput {
 	merged := &ReviewOutput{}
+	seen := make(map[string]bool)
 	summaries := make([]string, 0, len(outputs))
 	for i, out := range outputs {
 		if out == nil {
 			continue
 		}
-		merged.Issues = append(merged.Issues, out.Issues...)
+		for _, issue := range out.Issues {
+			key := fmt.Sprintf("%s:%d:%s", issue.File, issue.Line, issue.Category)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			merged.Issues = append(merged.Issues, issue)
+		}
 		if out.Summary != "" {
 			summaries = append(summaries, fmt.Sprintf("Chunk %d: %s", i+1, out.Summary))
 		}
@@ -177,6 +187,9 @@ func extractJSONBlock(text string) string {
 }
 
 // buildInlineComments 将 issues 转换为 GitHub inline review comments。
+// 注意：这里只传新文件行号 Line，GitHub 默认 side=RIGHT（新增/修改行）。
+// LLM 输出的行号约定为新文件行号；若未来要支持"被删行"（side=LEFT）评论，
+// 需在输出 schema 中让 LLM 同时报告旧文件行号。
 func buildInlineComments(issues []Issue) []github.ReviewComment {
 	var comments []github.ReviewComment
 	for _, issue := range issues {
