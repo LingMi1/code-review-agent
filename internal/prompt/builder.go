@@ -4,6 +4,7 @@ package prompt
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/LingMi1/code-review-agent/internal/diff"
 )
@@ -103,6 +104,23 @@ func writeJSONResponseFormat(b *strings.Builder) {
   ]
 }`)
 	b.WriteString("\n```\n\n")
+	b.WriteString("Example:\n")
+	b.WriteString("```json\n")
+	b.WriteString(`{
+  "summary": "Adds user lookup by name; the query is built by string concatenation.",
+  "issues": [
+    {
+      "file": "user_handler.go",
+      "line": 43,
+      "severity": "high",
+      "category": "security",
+      "title": "SQL injection via string concatenation",
+      "description": "The query concatenates user input directly, allowing SQL injection.",
+      "suggestion": "Use a parameterized query: db.QueryRow(\"SELECT ... WHERE name = ?\", name)"
+    }
+  ]
+}`)
+	b.WriteString("\n```\n\n")
 	b.WriteString("Rules:\n")
 	b.WriteString("- Only report real issues. Do not flag correct code.\n")
 	b.WriteString("- `line` must be the line number in the NEW file (lines starting with '+').\n")
@@ -128,6 +146,10 @@ func TruncatePrompt(prompt string, maxBytes int) string {
 		return prompt
 	}
 	cut := prompt[:maxBytes]
+	// 按字节截断可能落在多字节 UTF-8 字符中间，回退到最近的合法 rune 边界。
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
 	// 在最后一个完整行处截断
 	if idx := strings.LastIndex(cut, "\n"); idx > 0 {
 		cut = cut[:idx]

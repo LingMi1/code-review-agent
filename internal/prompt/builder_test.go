@@ -3,6 +3,7 @@ package prompt
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/LingMi1/code-review-agent/internal/diff"
 )
@@ -77,5 +78,14 @@ func TestTruncatePrompt(t *testing.T) {
 	}
 	if !strings.HasSuffix(gotMulti, "truncated due to size)") {
 		t.Errorf("TruncatePrompt(multiline) should end with truncated marker, got ...%q", gotMulti[len(gotMulti)-20:])
+	}
+}
+
+func TestTruncatePromptUTF8Boundary(t *testing.T) {
+	// 每个中文字符 3 字节，maxBytes=100 会落在 '你' 中间
+	s := strings.Repeat("你", 100)
+	got := TruncatePrompt(s, 100)
+	if !utf8.ValidString(got) {
+		t.Errorf("TruncatePrompt() produced invalid UTF-8: %q", got)
 	}
 }

@@ -15,67 +15,76 @@ type Event struct {
 	Data any    `json:"data"`
 }
 
-// Hub 是 SSE 广播中心。
+// Hub 是 SSE 广播中心。同一个 session 支持多个订阅者（如多个浏览器标签页）。
 type Hub struct {
-	mu       sync.RWMutex
-	channels map[string]chan Event // session_id → event channel
-	done     map[string]chan struct{}
-	allowed  map[string]bool // 允许的跨域 origin 白名单（SetAllowedOrigins 配置，nil 表示不开放跨域）
+	mu      sync.RWMutex
+	subs    map[string]map[chan Event]struct{} // session_id → 订阅者 channel 集合
+	allowed map[string]bool                    // 允许的跨域 origin 白名单（nil 表示不开放跨域）
 }
 
 // NewHub 创建新的 SSE hub。
 func NewHub() *Hub {
 	return &Hub{
-		channels: make(map[string]chan Event),
-		done:     make(map[string]chan struct{}),
+		subs: make(map[string]map[chan Event]struct{}),
 	}
 }
 
 // SetAllowedOrigins 设置允许跨域访问的 origin 白名单（复用主服务的 ALLOWED_ORIGINS）。
+// 通常在服务启动、开始对外服务前调用一次。
 func (h *Hub) SetAllowedOrigins(origins map[string]bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.allowed = origins
 }
 
 // Subscribe 注册一个 SSE 订阅。返回事件 channel 和取消函数。
+// 取消函数只会关闭并移除该订阅者自己的 channel，不影响同一 session 的其他订阅者。
 func (h *Hub) Subscribe(sessionID string) (<-chan Event, func()) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	ch := make(chan Event, 32)
-	done := make(chan struct{})
-	h.channels[sessionID] = ch
-	h.done[sessionID] = done
 
+	h.mu.Lock()
+	if h.subs[sessionID] == nil {
+		h.subs[sessionID] = make(map[chan Event]struct{})
+	}
+	h.subs[sessionID][ch] = struct{}{}
+	h.mu.Unlock()
+
+	var once sync.Once
 	cancel := func() {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		if _, ok := h.channels[sessionID]; ok {
-			close(h.channels[sessionID])
-			delete(h.channels, sessionID)
-		}
-		if _, ok := h.done[sessionID]; ok {
-			close(h.done[sessionID])
-			delete(h.done, sessionID)
-		}
+		once.Do(func() {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			if set, ok := h.subs[sessionID]; ok {
+				if _, exists := set[ch]; exists {
+					delete(set, ch)
+					close(ch)
+				}
+				if len(set) == 0 {
+					delete(h.subs, sessionID)
+				}
+			}
+		})
 	}
 
 	return ch, cancel
 }
 
-// Publish 发送一条事件到指定 session。
+// Publish 发送一条事件到指定 session 的所有订阅者。
+// 非阻塞：订阅者 channel 满时丢弃该事件，避免慢消费者拖垮广播。
 func (h *Hub) Publish(sessionID string, evt Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	ch, ok := h.channels[sessionID]
+	set, ok := h.subs[sessionID]
 	if !ok {
 		return
 	}
-
-	select {
-	case ch <- evt:
-	default:
-		slog.Warn("sse: channel full, dropping event", "session", sessionID, "type", evt.Type)
+	for ch := range set {
+		select {
+		case ch <- evt:
+		default:
+			slog.Warn("sse: channel full, dropping event", "session", sessionID, "type", evt.Type)
+		}
 	}
 }
 
@@ -92,7 +101,11 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	if origin := r.Header.Get("Origin"); origin != "" && h.allowed != nil && h.allowed[origin] {
+
+	h.mu.RLock()
+	allowed := h.allowed
+	h.mu.RUnlock()
+	if origin := r.Header.Get("Origin"); origin != "" && allowed != nil && allowed[origin] {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
 	}

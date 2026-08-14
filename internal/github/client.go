@@ -123,6 +123,10 @@ func (c *Client) PostIssueComment(ctx context.Context, owner, repo string, prNum
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("post comment: HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
 	return nil
 }
 
@@ -140,10 +144,24 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 	var lastErr error
 
 	for i := range maxRetries {
+		// 重试前重置 body：手动循环里复用同一个 req，bytes.Reader 在第一次 Do 后
+		// 已读到 EOF，直接重试会发出空 body。GetBody 会返回全新的 reader。
+		if req.GetBody != nil {
+			body, err := req.GetBody()
+			if err != nil {
+				return nil, fmt.Errorf("rewind request body: %w", err)
+			}
+			req.Body = body
+		}
+
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			lastErr = err
-			time.Sleep(time.Duration(i+1) * time.Second)
+			select {
+			case <-time.After(time.Duration(i+1) * time.Second):
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			}
 			continue
 		}
 
