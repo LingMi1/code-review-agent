@@ -42,32 +42,44 @@ type Poster interface {
 	PostIssueComment(ctx context.Context, owner, repo string, prNumber int, body string) error
 }
 
-// ParseAndPost 解析 Agent 的审查结果并投递到 GitHub PR。
-// 返回结构化结果（问题数 + 摘要），避免上层再次解析文本。
-func ParseAndPost(ctx context.Context, gh Poster, owner, repo string, prNumber int, headSHA string, resultText string) (*PostResult, error) {
-	review, err := parseResult(resultText)
-	if err != nil {
-		// JSON 解析失败 → 降级为纯文本 comment
-		slog.Warn("review: failed to parse structured output, falling back to plain text", "error", err)
-		if err := gh.PostIssueComment(ctx, owner, repo, prNumber, formatPlainComment(resultText)); err != nil {
-			return nil, err
-		}
-		return &PostResult{Issues: 0, Summary: truncateSummary(resultText)}, nil
-	}
+// ParseResult 解析单段 Agent 输出为结构化审查结果。失败返回 error，由调用方决定降级策略。
+func ParseResult(text string) (*ReviewOutput, error) {
+	return parseResult(text)
+}
 
-	if len(review.Issues) == 0 {
+// MergeOutputs 合并分块审查的多段结构化结果：issues 拼接、summary 分段汇总。
+func MergeOutputs(outputs []*ReviewOutput) *ReviewOutput {
+	merged := &ReviewOutput{}
+	summaries := make([]string, 0, len(outputs))
+	for i, out := range outputs {
+		if out == nil {
+			continue
+		}
+		merged.Issues = append(merged.Issues, out.Issues...)
+		if out.Summary != "" {
+			summaries = append(summaries, fmt.Sprintf("Chunk %d: %s", i+1, out.Summary))
+		}
+	}
+	merged.Summary = strings.Join(summaries, "\n")
+	return merged
+}
+
+// Post 将已解析的结构化审查结果投递到 GitHub PR。
+// 返回结构化结果（问题数 + 摘要），避免上层再次解析文本。
+func Post(ctx context.Context, gh Poster, owner, repo string, prNumber int, headSHA string, out *ReviewOutput) (*PostResult, error) {
+	if len(out.Issues) == 0 {
 		if err := gh.PostIssueComment(ctx, owner, repo, prNumber, fmt.Sprintf(
 			"## AI Code Review\n\n%s\n\n**No issues found.** Great job!",
-			review.Summary,
+			out.Summary,
 		)); err != nil {
 			return nil, err
 		}
-		return &PostResult{Issues: 0, Summary: review.Summary}, nil
+		return &PostResult{Issues: 0, Summary: out.Summary}, nil
 	}
 
 	// 构建 review body
-	body := fmt.Sprintf("## AI Code Review\n\n%s\n\n### Issues Found\n\n", review.Summary)
-	for i, issue := range review.Issues {
+	body := fmt.Sprintf("## AI Code Review\n\n%s\n\n### Issues Found\n\n", out.Summary)
+	for i, issue := range out.Issues {
 		severityEmoji := severityIcon(issue.Severity)
 		body += fmt.Sprintf("%d. %s **%s** — `%s:%d` (%s/%s)\n   %s\n   > Suggestion: %s\n\n",
 			i+1, severityEmoji, issue.Title, issue.File, issue.Line,
@@ -78,7 +90,7 @@ func ParseAndPost(ctx context.Context, gh Poster, owner, repo string, prNumber i
 	}
 
 	// 尝试构造 inline comments
-	comments := buildInlineComments(review.Issues)
+	comments := buildInlineComments(out.Issues)
 	if len(comments) > 0 {
 		if err := gh.PostReview(ctx, owner, repo, prNumber, headSHA, body, comments); err != nil {
 			return nil, err
@@ -88,7 +100,21 @@ func ParseAndPost(ctx context.Context, gh Poster, owner, repo string, prNumber i
 		return nil, err
 	}
 
-	return &PostResult{Issues: len(review.Issues), Summary: review.Summary}, nil
+	return &PostResult{Issues: len(out.Issues), Summary: out.Summary}, nil
+}
+
+// ParseAndPost 解析 Agent 的审查结果并投递到 GitHub PR（单段输出的便捷入口）。
+func ParseAndPost(ctx context.Context, gh Poster, owner, repo string, prNumber int, headSHA string, resultText string) (*PostResult, error) {
+	out, err := ParseResult(resultText)
+	if err != nil {
+		// JSON 解析失败 → 降级为纯文本 comment
+		slog.Warn("review: failed to parse structured output, falling back to plain text", "error", err)
+		if err := gh.PostIssueComment(ctx, owner, repo, prNumber, formatPlainComment(resultText)); err != nil {
+			return nil, err
+		}
+		return &PostResult{Issues: 0, Summary: truncateSummary(resultText)}, nil
+	}
+	return Post(ctx, gh, owner, repo, prNumber, headSHA, out)
 }
 
 // truncateSummary 截断摘要，用于降级路径的展示。

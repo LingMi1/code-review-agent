@@ -3,6 +3,7 @@ package reviewer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -43,9 +44,11 @@ func (m *mockStore) AuditLog(action string, prNumber int, actor, detail string) 
 type mockCognition struct {
 	result *cognition.ReviewResult
 	err    error
+	calls  int
 }
 
 func (m *mockCognition) RunReview(ctx context.Context, req cognition.ReviewRequest) (*cognition.ReviewResult, error) {
+	m.calls++
 	return m.result, m.err
 }
 
@@ -200,4 +203,41 @@ func TestReviewPanicRecovered(t *testing.T) {
 	if st.lastStatus != "failed" {
 		t.Fatalf("expected status failed, got %q", st.lastStatus)
 	}
+}
+
+// TestReviewChunked 验证大 diff 触发分块审查：逐块调用认知面并合并结果。
+func TestReviewChunked(t *testing.T) {
+	st := &mockStore{insertID: 42}
+	gh := &mockGitHub{diff: largeDiff()}
+	cog := &mockCognition{result: &cognition.ReviewResult{Text: sampleResult, Duration: 10 * time.Millisecond}}
+	se := &mockSSE{}
+	m := &mockMetrics{}
+
+	svc := newService(st, cog, gh, se, m)
+	if err := svc.Review(context.Background(), "owner", "repo", 1, "abc", 0); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if cog.calls != 2 {
+		t.Fatalf("expected 2 chunked cognition calls, got %d", cog.calls)
+	}
+	if st.lastIssues != 2 {
+		t.Fatalf("expected 2 merged issues, got %d", st.lastIssues)
+	}
+	if !gh.posted {
+		t.Fatal("expected merged review to be posted to GitHub")
+	}
+}
+
+// largeDiff 生成一个跨 2 个文件、总行数 > 800 的 diff，触发 ChunkBySize 拆成 2 块。
+func largeDiff() string {
+	var b strings.Builder
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(&b, "diff --git a/file%d.go b/file%d.go\n", i, i)
+		fmt.Fprintf(&b, "index 0000000..1111111 100644\n--- a/file%d.go\n+++ b/file%d.go\n", i, i)
+		b.WriteString("@@ -1,250 +1,250 @@\n")
+		for j := 0; j < 250; j++ {
+			fmt.Fprintf(&b, "-old line %d\n+new line %d\n", j, j)
+		}
+	}
+	return b.String()
 }

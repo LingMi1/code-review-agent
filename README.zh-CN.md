@@ -52,7 +52,7 @@ GitHub PR webhook / 手动触发
 
 - **真实 PR 处理**：处理 `opened`、`synchronize`、`reopened` 三类 PR 事件
 - **HMAC-SHA256 Webhook 验签**：防止伪造请求
-- **增量 Diff 分块**：大 PR 按文件拆分，控制 Token 预算
+- **Diff 分块**：大 PR 按文件拆成 ≤800 行的块，逐块独立审查后合并
 - **结构化 JSON 输出**：LLM 返回可被程序解析的审查结果（文件/行号/严重级/类别/建议）
 - **优雅降级**：JSON 解析失败时回退为纯文本评论
 - **GitHub API 限流处理**：遵循 `Retry-After` 响应头自动重试
@@ -63,13 +63,12 @@ GitHub PR webhook / 手动触发
 
 ### 成本控制
 
-- **Token 预算上限**：按文件和按 PR 设 Token 上限，防止成本失控
-- **智能模型路由**：小 PR 用便宜模型，大/复杂 PR 升级到更强模型
-- **Diff 截断**：超长 hunk 在构造 prompt 前裁剪
+- **模型路由**：`react` 模式 → agent-go `executor` 角色（默认 DeepSeek，便宜）；`plan_execute` 模式 → `planner` 角色（可通过 `COGNITION_PLANNER_MODEL` 切换到更强模型）
+- **Prompt 截断**：prompt 上限 32KB，超长 hunk 在构造前裁剪
 
 ### 多 Agent（Plan-Execute）
 
-大 PR 使用 **plan-execute 模式**审查：Agent 先把审查任务拆解为独立子任务（安全、bug 检测、性能、代码质量），并行执行后汇总为一份结构化审查。
+复杂 PR（10+ 文件）使用 **plan-execute 模式**审查：Agent 先把审查任务拆解为独立子任务（安全、bug 检测、性能、代码质量），并行执行后汇总为一份结构化审查。
 
 ### 可观测性
 

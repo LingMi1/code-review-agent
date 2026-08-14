@@ -166,6 +166,15 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 	prSize := diff.CalcPRSize(allFiles, files)
 	usePlanExecute := diff.ShouldUsePlanExecute(prSize)
 
+	// 模型路由：经 agent-go 的角色分层路由实现。
+	//   react        → executor 角色（默认 deepseek，便宜）
+	//   plan_execute → planner 角色（可用 COGNITION_PLANNER_MODEL 切到更强模型）
+	// 小 PR 走 react 用便宜模型，大 PR 走 plan_execute 用强模型。
+	modelTier := "cheap"
+	if usePlanExecute {
+		modelTier = "strong"
+	}
+
 	slog.InfoContext(ctx, "diff parsed",
 		"pr", prNumber,
 		"files", len(files),
@@ -173,89 +182,159 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 		"chunks", len(chunks),
 		"lines", prSize.Lines,
 		"mode", map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
+		"model_tier", modelTier,
 	)
 
 	s.sse.Publish(sessionID, jsonEvent("review.progress", map[string]any{
-		"pr":     prNumber,
-		"status": "analyzing",
-		"files":  len(files),
-		"chunks": len(chunks),
-		"mode":   map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
+		"pr":         prNumber,
+		"status":     "analyzing",
+		"files":      len(files),
+		"chunks":     len(chunks),
+		"mode":       map[bool]string{true: "plan_execute", false: "react"}[usePlanExecute],
+		"model_tier": modelTier,
 	}))
 
-	// 4. 构造 prompt。
 	prTitle := fmt.Sprintf("%s#%d", repoFullName, prNumber)
-	var reviewPrompt string
-	if usePlanExecute {
-		reviewPrompt = prompt.BuildPlanExecutePrompt(prTitle, files)
-	} else {
-		reviewPrompt = prompt.BuildReviewPrompt(prTitle, files)
-	}
-	const maxPromptBytes = 32_000
-	reviewPrompt = prompt.TruncatePrompt(reviewPrompt, maxPromptBytes)
+	sessionBase := fmt.Sprintf("pr-review-%s-%d", repoName, prNumber)
 
-	// 5. 调用 agent-go 认知面。
-	_, cognitionSpan := otel.StartSpan(ctx, "cognition.run_review")
-	slog.InfoContext(ctx, "calling agent-go cognition",
-		"pr", prNumber,
-		"prompt_bytes", len(reviewPrompt),
-		"use_plan_execute", usePlanExecute,
-	)
-	var result *cognition.ReviewResult
-	if usePlanExecute {
-		result, err = s.cog.RunPlanExecuteReview(ctx,
-			fmt.Sprintf("pr-review-%s-%d", repoName, prNumber),
-			reviewPrompt, 8)
-	} else {
-		result, err = s.cog.RunReview(ctx, cognition.ReviewRequest{
-			SessionID: fmt.Sprintf("pr-review-%s-%d", repoName, prNumber),
-			Query:     reviewPrompt,
-			AgentType: "react",
-			MaxSteps:  5,
-		})
-	}
-	cognitionSpan.End()
-	if err != nil {
-		s.store.AuditLog("review.failed", prNumber, repoFullName, err.Error())
-		s.metrics.RecordCognitionError()
-		s.metrics.RecordFailure()
-		resultErr = fmt.Errorf("run review: %w", err)
-		return resultErr
-	}
-
-	slog.InfoContext(ctx, "review completed",
-		"pr", prNumber,
-		"duration", result.Duration,
-		"output_chars", len(result.Text),
+	var (
+		issues        int
+		summary       string
+		totalDuration time.Duration
+		totalTextLen  int
 	)
 
-	// 6. 解析结果 + 投递到 GitHub。
-	_, postSpan := otel.StartSpan(ctx, "github.post_review")
-	postResult, err := review.ParseAndPost(ctx, s.gh, owner, repoName, prNumber, headSHA, result.Text)
-	if err != nil {
-		s.store.AuditLog("review.failed", prNumber, repoFullName, err.Error())
-		s.metrics.RecordFailure()
+	if len(chunks) > 1 {
+		// 分块审查：大 diff 按文件拆成多块，逐块用 react 认知面审查后合并，
+		// 避免把整份 diff 塞进单条超长 prompt（再被 32KB 硬截断丢掉后半段）。
+		s.sse.Publish(sessionID, jsonEvent("review.progress", map[string]any{
+			"pr": prNumber, "status": "analyzing", "mode": "chunked", "chunks": len(chunks),
+		}))
+		merged, dur, textLen, cerr := s.reviewChunks(ctx, prTitle, sessionBase, chunks)
+		if cerr != nil {
+			s.store.AuditLog("review.failed", prNumber, repoFullName, cerr.Error())
+			s.metrics.RecordCognitionError()
+			s.metrics.RecordFailure()
+			resultErr = fmt.Errorf("chunked review: %w", cerr)
+			return resultErr
+		}
+		_, postSpan := otel.StartSpan(ctx, "github.post_review")
+		postResult, perr := review.Post(ctx, s.gh, owner, repoName, prNumber, headSHA, merged)
 		postSpan.End()
-		resultErr = fmt.Errorf("post review: %w", err)
-		return resultErr
+		if perr != nil {
+			s.store.AuditLog("review.failed", prNumber, repoFullName, perr.Error())
+			s.metrics.RecordFailure()
+			resultErr = fmt.Errorf("post review: %w", perr)
+			return resultErr
+		}
+		issues, summary, totalDuration, totalTextLen = postResult.Issues, postResult.Summary, dur, textLen
+	} else {
+		// 单块：react（小 PR）或 plan_execute（大 PR 多文件，按任务拆解）。
+		var reviewPrompt string
+		if usePlanExecute {
+			reviewPrompt = prompt.BuildPlanExecutePrompt(prTitle, files)
+		} else {
+			reviewPrompt = prompt.BuildReviewPrompt(prTitle, files)
+		}
+		const maxPromptBytes = 32_000
+		reviewPrompt = prompt.TruncatePrompt(reviewPrompt, maxPromptBytes)
+
+		_, cognitionSpan := otel.StartSpan(ctx, "cognition.run_review")
+		slog.InfoContext(ctx, "calling agent-go cognition",
+			"pr", prNumber,
+			"prompt_bytes", len(reviewPrompt),
+			"use_plan_execute", usePlanExecute,
+		)
+		var result *cognition.ReviewResult
+		if usePlanExecute {
+			result, err = s.cog.RunPlanExecuteReview(ctx, sessionBase, reviewPrompt, 8)
+		} else {
+			result, err = s.cog.RunReview(ctx, cognition.ReviewRequest{
+				SessionID: sessionBase,
+				Query:     reviewPrompt,
+				AgentType: "react",
+				MaxSteps:  5,
+			})
+		}
+		cognitionSpan.End()
+		if err != nil {
+			s.store.AuditLog("review.failed", prNumber, repoFullName, err.Error())
+			s.metrics.RecordCognitionError()
+			s.metrics.RecordFailure()
+			resultErr = fmt.Errorf("run review: %w", err)
+			return resultErr
+		}
+
+		slog.InfoContext(ctx, "review completed",
+			"pr", prNumber,
+			"duration", result.Duration,
+			"output_chars", len(result.Text),
+		)
+
+		_, postSpan := otel.StartSpan(ctx, "github.post_review")
+		postResult, perr := review.ParseAndPost(ctx, s.gh, owner, repoName, prNumber, headSHA, result.Text)
+		postSpan.End()
+		if perr != nil {
+			s.store.AuditLog("review.failed", prNumber, repoFullName, perr.Error())
+			s.metrics.RecordFailure()
+			resultErr = fmt.Errorf("post review: %w", perr)
+			return resultErr
+		}
+		issues, summary, totalDuration, totalTextLen = postResult.Issues, postResult.Summary, result.Duration, len(result.Text)
 	}
-	postSpan.End()
 
-	// 7. 更新审查记录（复用 ParseAndPost 返回的结构化结果）。
-	issues := postResult.Issues
-	s.store.UpdateReview(reviewID, "success", issues, postResult.Summary, result.Duration.String(), "")
+	// 7. 更新审查记录（复用结构化结果）+ 指标 + 完成事件。
+	s.store.UpdateReview(reviewID, "success", issues, summary, totalDuration.String(), "")
 	s.store.AuditLog("review.completed", prNumber, repoFullName,
-		fmt.Sprintf("issues=%d duration=%s", issues, result.Duration))
+		fmt.Sprintf("issues=%d duration=%s", issues, totalDuration))
 
-	s.metrics.RecordSuccess(result.Duration.Milliseconds(), len(result.Text), issues)
+	s.metrics.RecordSuccess(totalDuration.Milliseconds(), totalTextLen, issues)
 
 	s.sse.Publish(sessionID, jsonEvent("review.completed", map[string]any{
-		"pr": prNumber, "status": "success", "issues": issues, "duration_ms": result.Duration.Milliseconds(),
+		"pr": prNumber, "status": "success", "issues": issues, "duration_ms": totalDuration.Milliseconds(),
 	}))
 
 	slog.InfoContext(ctx, "review posted to GitHub", "pr", prNumber, "issues", issues)
 	slog.InfoContext(ctx, "review total duration", "ms", time.Since(reviewStart).Milliseconds())
 	return nil
+}
+
+// reviewChunks 分块审查：逐块用 react 认知面审查，解析并合并结构化结果。
+// 返回合并结果、总耗时与总输出字节数。
+func (s *Service) reviewChunks(ctx context.Context, prTitle, sessionBase string, chunks [][]diff.FileDiff) (*review.ReviewOutput, time.Duration, int, error) {
+	const maxPromptBytes = 32_000
+	outputs := make([]*review.ReviewOutput, 0, len(chunks))
+	var totalDuration time.Duration
+	var totalTextLen int
+	for i, chunk := range chunks {
+		chunkTitle := fmt.Sprintf("%s (part %d/%d)", prTitle, i+1, len(chunks))
+		chunkPrompt := prompt.TruncatePrompt(prompt.BuildReviewPrompt(chunkTitle, chunk), maxPromptBytes)
+
+		_, span := otel.StartSpan(ctx, fmt.Sprintf("cognition.chunk_%d", i+1))
+		result, err := s.cog.RunReview(ctx, cognition.ReviewRequest{
+			SessionID: fmt.Sprintf("%s-chunk-%d", sessionBase, i+1),
+			Query:     chunkPrompt,
+			AgentType: "react",
+			MaxSteps:  5,
+		})
+		span.End()
+		if err != nil {
+			return nil, totalDuration, totalTextLen, fmt.Errorf("chunk %d/%d: %w", i+1, len(chunks), err)
+		}
+		totalDuration += result.Duration
+		totalTextLen += len(result.Text)
+
+		out, perr := review.ParseResult(result.Text)
+		if perr != nil {
+			slog.WarnContext(ctx, "chunk output unparseable, skipped", "chunk", i+1, "error", perr)
+			continue
+		}
+		outputs = append(outputs, out)
+	}
+	if len(outputs) == 0 {
+		return nil, totalDuration, totalTextLen, fmt.Errorf("no chunk produced structured output")
+	}
+	return review.MergeOutputs(outputs), totalDuration, totalTextLen, nil
 }
 
 // jsonEvent 构造一条 SSE 事件，data 用 JSON 序列化避免手工拼接导致的转义问题。

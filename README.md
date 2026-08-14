@@ -52,7 +52,7 @@ GitHub PR webhook / manual trigger
 
 - **Real PR Processing**: Handles `opened`, `synchronize`, and `reopened` PR events
 - **HMAC-SHA256 Webhook Verification**: Prevents forged requests
-- **Incremental Diff Chunking**: Large PRs split by file to fit token budgets
+- **Diff Chunking**: Large PRs split by file into ≤800-line chunks, reviewed independently and merged
 - **Structured JSON Output**: LLM returns machine-parseable review with file/line/severity/category/suggestion
 - **Graceful Degradation**: Falls back to plain-text comment when JSON parsing fails
 - **GitHub API Rate Limit Handling**: Respects `Retry-After` headers with automatic retry
@@ -63,13 +63,12 @@ GitHub PR webhook / manual trigger
 
 ### Cost Control
 
-- **Token Budget Enforcement**: Per-file and per-PR token limits prevent runaway costs
-- **Smart Model Routing**: Small PRs use cheap models, large/complex PRs escalate to stronger models
-- **Diff Truncation**: Oversized hunks trimmed before prompt construction
+- **Model Routing**: `react` mode → agent-go `executor` role (default DeepSeek, cheap); `plan_execute` mode → `planner` role (configurable to a stronger model via `COGNITION_PLANNER_MODEL`)
+- **Prompt Truncation**: Prompts capped at 32KB and oversized hunks trimmed before construction
 
 ### Multi-Agent (Plan-Execute)
 
-Large PRs are reviewed in **plan-execute mode**: the agent first decomposes the review into independent sub-tasks (security, bug detection, performance, code quality), executes each in parallel, then aggregates results into a single structured review.
+Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first decomposes the review into independent sub-tasks (security, bug detection, performance, code quality), executes each in parallel, then aggregates results into a single structured review.
 
 ### Observability
 
