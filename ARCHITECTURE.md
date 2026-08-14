@@ -1,5 +1,7 @@
 # Architecture
 
+> [简体中文](ARCHITECTURE.zh-CN.md)
+
 This document explains the design of **code-review-agent** and the trade-offs
 behind the key decisions. It is written for reviewers and interviewers who want
 to understand *why* the system is built the way it is.
