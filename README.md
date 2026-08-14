@@ -73,7 +73,7 @@ PRs with 10+ files that still fit in a single prompt are reviewed in **plan-exec
 
 ### Security & Reliability
 
-- **Rate Limiting**: Per-IP sliding-window limiter (120 req/min) returns `429 Too Many Requests` when exceeded
+- **Rate Limiting**: Per-IP sliding-window limiter (120 req/min) returns `429 Too Many Requests` when exceeded. `X-Forwarded-For` is only honored when `TRUST_X_FORWARDED_FOR=true` (i.e. behind a trusted reverse proxy); otherwise the limiter keys on `RemoteAddr` to prevent header spoofing.
 - **Panic Recovery**: Middleware catches handler panics, logs the stack trace, and returns 500 instead of crashing the process
 - **ReadHeaderTimeout**: 5s header-read timeout mitigates slowloris-style attacks
 - **Constant-Time Token Comparison**: API token checks use `crypto/subtle.ConstantTimeCompare` to prevent timing attacks
@@ -241,18 +241,24 @@ go run ./cmd/eval/ -real
 
 ### Results (DeepSeek-chat)
 
-| Metric | Mock Baseline (18 cases) | DeepSeek (15-case run) |
+> ⚠️ These numbers are from an earlier 15-case run and are **stale** — they do not cover
+> the current 18-case corpus. Re-run `go run ./cmd/eval/ -real` to refresh them.
+
+| Metric | Mock Baseline (18 cases) | DeepSeek (15-case run, stale) |
 |---|---|---|
 | Pass Rate (F1 ≥ 0.5) | 56% (10/18) | **73% (11/15)** |
 | Macro Precision | 0.49 | **0.51** |
-| Macro Recall | 0.56 | **1.00** |
+| Macro Recall | 0.56 | **1.00*** |
 | Macro F1 | 0.52 | **0.68** |
 
-> The real-LLM column is the latest `-real` run on the original 15 cases. Re-run `go run ./cmd/eval/ -real` against agent-go cognition to refresh it for all 18 cases.
+> \* Recall is computed with a lenient matcher (basename + ±3-line tolerance). A value of
+> 1.00 on a small sample is an **upper bound**, not proof that the model is flawless.
 
 Key findings:
 
-- **Recall 1.00**: The real LLM finds every labeled bug and security vulnerability (zero false negatives) — the most important property for a code review tool.
+- **Recall is high, not perfect**: under lenient matching the real LLM hit every labeled issue
+  in that 15-case run, but the sample is small and the matcher tolerates ±3 lines. Read this as
+  an upper bound rather than "zero false negatives".
 - **Precision 0.51**: The agent also reports additional findings beyond the labeled set (e.g. deprecated APIs, missing error context). Many of these are legitimate but not in the human annotation, which lowers precision under the strict matching rule.
 - **Multi-bug cases**: Cases 016–018 each contain several real defects in one diff; the mock baseline catches all of them (rule-based), while the real LLM must both find them and avoid matching distractors.
 

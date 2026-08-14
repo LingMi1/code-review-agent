@@ -28,12 +28,14 @@ type Recorder struct {
 	reviewFailed  int64
 
 	// 延迟分布（毫秒）
-	latencies []int64 // 最近 1000 次
-	latCount  int
+	latencies []int64 // 最近 1000 次（仅用于分位数）
+	latCount  int    // 累计次数（与 _sum 同源，保证 summary 语义一致）
+	latSum    int64  // 累计延迟总和（毫秒）
 
 	// 输出字节分布
-	outputBytes []int64
-	byteCount   int
+	outputBytes []int64 // 最近 1000 次（仅用于分位数，暂未暴露分位数）
+	byteCount   int    // 累计次数（与 _sum 同源）
+	byteSum     int64  // 累计字节总和
 
 	// 最后一次审查的问题数
 	lastIssuesFound int
@@ -62,11 +64,13 @@ func (r *Recorder) RecordSuccess(latencyMs int64, outputBytes int, issuesFound i
 		r.latencies = r.latencies[1:]
 	}
 	r.latCount++
+	r.latSum += latencyMs
 	r.outputBytes = append(r.outputBytes, int64(outputBytes))
 	if len(r.outputBytes) > 1000 {
 		r.outputBytes = r.outputBytes[1:]
 	}
 	r.byteCount++
+	r.byteSum += int64(outputBytes)
 	r.lastIssuesFound = issuesFound
 }
 
@@ -106,7 +110,7 @@ func (r *Recorder) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		write(fmt.Sprintf("review_latency_ms{quantile=\"0.5\"} %d\n", r.p50))
 		write(fmt.Sprintf("review_latency_ms{quantile=\"0.95\"} %d\n", r.p95))
 		write(fmt.Sprintf("review_latency_ms{quantile=\"0.99\"} %d\n", r.p99))
-		write(fmt.Sprintf("review_latency_ms_sum %d\n", sum(r.latencies)))
+		write(fmt.Sprintf("review_latency_ms_sum %d\n", r.latSum))
 		write(fmt.Sprintf("review_latency_ms_count %d\n", r.latCount))
 	}
 
@@ -117,7 +121,7 @@ func (r *Recorder) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	write("# HELP review_output_bytes Size of agent output in bytes.\n")
 	write("# TYPE review_output_bytes summary\n")
 	if len(r.outputBytes) > 0 {
-		write(fmt.Sprintf("review_output_bytes_sum %d\n", sum(r.outputBytes)))
+		write(fmt.Sprintf("review_output_bytes_sum %d\n", r.byteSum))
 		write(fmt.Sprintf("review_output_bytes_count %d\n", r.byteCount))
 	}
 
@@ -150,12 +154,4 @@ func (r *Recorder) recalcLatencies() {
 	r.p50 = sorted[n*50/100]
 	r.p95 = sorted[n*95/100]
 	r.p99 = sorted[n*99/100]
-}
-
-func sum(a []int64) int64 {
-	var s int64
-	for _, v := range a {
-		s += v
-	}
-	return s
 }

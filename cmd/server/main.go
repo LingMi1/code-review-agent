@@ -220,7 +220,7 @@ func main() {
 	})
 
 	// 中间件链：Tracing → Recovery → RateLimit → mux
-	rl := middleware.NewRateLimiter(120, time.Minute) // 每分钟 120 次/IP
+	rl := middleware.NewRateLimiter(120, time.Minute, cfg.TrustXForwardedFor) // 每分钟 120 次/IP
 	handler := middleware.Tracing(
 		middleware.Recovery(
 			middleware.RateLimit(rl)(mux),

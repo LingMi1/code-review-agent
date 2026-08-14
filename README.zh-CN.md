@@ -73,7 +73,7 @@ GitHub PR webhook / 手动触发
 
 ### 安全与可靠性
 
-- **IP 限流**：基于滑动窗口的按 IP 限流（120 次/分钟），超限返回 `429 Too Many Requests`
+- **IP 限流**：基于滑动窗口的按 IP 限流（120 次/分钟），超限返回 `429 Too Many Requests`。仅当 `TRUST_X_FORWARDED_FOR=true`（部署在受信反向代理后）时才信任 `X-Forwarded-For`；否则使用 `RemoteAddr`，防止伪造请求头绕过限流
 - **Panic 恢复**：中间件捕获 handler 中的 panic，记录堆栈后返回 500，避免进程崩溃
 - **ReadHeaderTimeout**：5 秒请求头读取超时，抵御 slowloris 慢速攻击
 - **常量时间 token 比较**：API token 校验使用 `crypto/subtle.ConstantTimeCompare`，防止时序攻击
@@ -241,18 +241,22 @@ go run ./cmd/eval/ -real
 
 ### 结果（DeepSeek-chat）
 
-| 指标 | Mock 基准（18 用例） | DeepSeek（15 用例运行） |
+> ⚠️ 以下数据来自较早的 15 个用例运行，**已过时**——未覆盖当前的 18 个用例。重跑 `go run ./cmd/eval/ -real` 即可刷新。
+
+| 指标 | Mock 基准（18 用例） | DeepSeek（15 用例运行，已过时） |
 |---|---|---|
 | 通过率（F1 ≥ 0.5） | 56%（10/18） | **73%（11/15）** |
 | Macro Precision | 0.49 | **0.51** |
-| Macro Recall | 0.56 | **1.00** |
+| Macro Recall | 0.56 | **1.00*** |
 | Macro F1 | 0.52 | **0.68** |
 
-> 真实 LLM 一列为在最初 15 个用例上最近一次 `-real` 运行的结果。针对 agent-go 认知面重跑 `go run ./cmd/eval/ -real` 即可刷新到全部 18 个用例。
+> \* Recall 由宽松匹配（basename + ±3 行容差）计算得出。小样本上的 1.00 只是**上界**，
+> 不能当作"模型完美无缺"的证据。
 
 关键发现：
 
-- **Recall 1.00**：真实 LLM 找出了所有标注的 bug 和安全漏洞（零漏报）—— 这对代码审查工具是最重要的指标。
+- **Recall 高但不等于完美**：在宽松匹配下，真实 LLM 命中了那 15 个用例里的全部标注问题，
+  但样本偏小、且匹配允许 ±3 行偏差。应把它理解为上界，而非"零漏报"。
 - **Precision 0.51**：Agent 还会报告标注集之外的额外发现（如废弃 API、缺少错误上下文）。其中很多是真实但不在人工标注范围内的问题，在严格匹配规则下降低了 precision。
 - **多 bug 用例**：016–018 每个 diff 内含多个真实缺陷；mock 基准（基于规则）能全部命中，真实 LLM 则需在命中缺陷的同时避开干扰项。
 

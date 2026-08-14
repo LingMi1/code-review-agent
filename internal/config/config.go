@@ -10,29 +10,31 @@ import (
 
 // Config 是应用的全部配置项。
 type Config struct {
-	GitHubToken     string
-	WebhookSecret   string
-	APIToken        string
-	CognitionAddr   string
-	ListenAddr      string
-	SQLitePath      string
-	AllowedOrigins  map[string]bool
-	OtelEndpoint    string
-	OtelServiceName string
+	GitHubToken        string
+	WebhookSecret      string
+	APIToken           string
+	CognitionAddr      string
+	ListenAddr         string
+	SQLitePath         string
+	AllowedOrigins     map[string]bool
+	OtelEndpoint       string
+	OtelServiceName    string
+	TrustXForwardedFor bool
 }
 
 // Load 从环境变量读取配置。
 func Load() *Config {
 	return &Config{
-		GitHubToken:     os.Getenv("GITHUB_TOKEN"),
-		WebhookSecret:   os.Getenv("WEBHOOK_SECRET"),
-		APIToken:        os.Getenv("API_TOKEN"),
-		CognitionAddr:   envDefault("COGNITION_ADDR", "localhost:50051"),
-		ListenAddr:      envDefault("LISTEN_ADDR", ":8080"),
-		SQLitePath:      envDefault("SQLITE_PATH", "./data/reviews.db"),
-		AllowedOrigins:  parseOrigins(envDefault("ALLOWED_ORIGINS", "http://localhost:5173")),
-		OtelEndpoint:    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-		OtelServiceName: envDefault("OTEL_SERVICE_NAME", "code-review-agent"),
+		GitHubToken:        os.Getenv("GITHUB_TOKEN"),
+		WebhookSecret:      os.Getenv("WEBHOOK_SECRET"),
+		APIToken:           os.Getenv("API_TOKEN"),
+		CognitionAddr:      envDefault("COGNITION_ADDR", "localhost:50051"),
+		ListenAddr:         envDefault("LISTEN_ADDR", ":8080"),
+		SQLitePath:         envDefault("SQLITE_PATH", "./data/reviews.db"),
+		AllowedOrigins:     parseOrigins(envDefault("ALLOWED_ORIGINS", "http://localhost:5173")),
+		OtelEndpoint:       os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		OtelServiceName:    envDefault("OTEL_SERVICE_NAME", "code-review-agent"),
+		TrustXForwardedFor: envBool("TRUST_X_FORWARDED_FOR", false),
 	}
 }
 
@@ -56,6 +58,20 @@ func envDefault(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+// envBool 解析布尔型环境变量，支持 1/true/yes/on（大小写不敏感）。
+func envBool(key string, defaultVal bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // parseOrigins 解析逗号分隔的 CORS origin 白名单。

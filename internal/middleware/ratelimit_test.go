@@ -8,7 +8,7 @@ import (
 )
 
 func TestRateLimiterAllowsUnderLimit(t *testing.T) {
-	rl := NewRateLimiter(3, time.Minute)
+	rl := NewRateLimiter(3, time.Minute, false)
 	for i := 0; i < 3; i++ {
 		if !rl.Allow("1.2.3.4") {
 			t.Fatalf("request %d should be allowed", i+1)
@@ -17,7 +17,7 @@ func TestRateLimiterAllowsUnderLimit(t *testing.T) {
 }
 
 func TestRateLimiterBlocksOverLimit(t *testing.T) {
-	rl := NewRateLimiter(2, time.Minute)
+	rl := NewRateLimiter(2, time.Minute, false)
 	rl.Allow("1.2.3.4")
 	rl.Allow("1.2.3.4")
 	if rl.Allow("1.2.3.4") {
@@ -26,7 +26,7 @@ func TestRateLimiterBlocksOverLimit(t *testing.T) {
 }
 
 func TestRateLimiterSeparatesIPs(t *testing.T) {
-	rl := NewRateLimiter(1, time.Minute)
+	rl := NewRateLimiter(1, time.Minute, false)
 	if !rl.Allow("1.1.1.1") {
 		t.Fatal("first IP should be allowed")
 	}
@@ -39,7 +39,7 @@ func TestRateLimiterSeparatesIPs(t *testing.T) {
 }
 
 func TestRateLimitMiddleware(t *testing.T) {
-	rl := NewRateLimiter(1, time.Minute)
+	rl := NewRateLimiter(1, time.Minute, false)
 	h := RateLimit(rl)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -67,16 +67,33 @@ func TestRateLimitMiddleware(t *testing.T) {
 func TestClientIPFromXFF(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Set("X-Forwarded-For", "10.0.0.1, 10.0.0.2")
-	if ip := clientIP(r); ip != "10.0.0.1" {
+	if ip := clientIP(r, true); ip != "10.0.0.1" {
 		t.Fatalf("clientIP = %q, want 10.0.0.1", ip)
+	}
+}
+
+func TestClientIPIgnoresXFFWhenUntrusted(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "192.168.1.1:54321"
+	r.Header.Set("X-Forwarded-For", "10.0.0.1, 10.0.0.2")
+	if ip := clientIP(r, false); ip != "192.168.1.1" {
+		t.Fatalf("clientIP = %q, want 192.168.1.1 (XFF must be ignored when untrusted)", ip)
 	}
 }
 
 func TestClientIPFromRemoteAddr(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r.RemoteAddr = "192.168.1.1:54321"
-	if ip := clientIP(r); ip != "192.168.1.1" {
+	if ip := clientIP(r, false); ip != "192.168.1.1" {
 		t.Fatalf("clientIP = %q, want 192.168.1.1", ip)
+	}
+}
+
+func TestClientIPFromIPv6RemoteAddr(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "[::1]:54321"
+	if ip := clientIP(r, false); ip != "::1" {
+		t.Fatalf("clientIP = %q, want ::1", ip)
 	}
 }
 

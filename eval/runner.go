@@ -4,6 +4,7 @@ package eval
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -46,7 +47,19 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 			continue
 		}
 
-		found, _ := reviewFn(c.Diff, c.Language)
+		found, err := reviewFn(c.Diff, c.Language)
+		if err != nil {
+			// 审查器失败不能当作"找到 0 个问题"，否则会把失败误记为 recall=0。
+			// 明确标记该用例未完成，避免污染指标。
+			slog.Warn("eval: review failed", "case", c.ID, "error", err)
+			results = append(results, CaseResult{
+				CaseID:   c.ID,
+				CaseName: c.Name,
+				Category: c.Category,
+				Passed:   false,
+			})
+			continue
+		}
 		result := evaluateCase(c, exp, found)
 		results = append(results, result)
 
@@ -163,10 +176,12 @@ func evaluateCase(c EvalCase, exp ExpectedResult, found []FoundIssue) CaseResult
 const lineTolerance = 3
 
 // isMatch 判断 Agent 找到的 issue 是否和期望的 issue 匹配。
-// 匹配规则：文件名包含匹配 + 行号在容差范围内 + category 一致。
+// 匹配规则：文件名（basename）一致 + 行号在容差范围内 + category 一致。
 func isMatch(found FoundIssue, expected ExpectedIssue) bool {
-	// 文件名：found 的文件名包含 expected 的文件名（或者反过来）
-	if !containsAny(found.File, expected.File) && !containsAny(expected.File, found.File) {
+	// 文件名：比较 basename（去掉路径），大小写不敏感。
+	// 用精确匹配而非子串包含，避免 "user.go" 误匹配 "user_handler.go" 之类，
+	// 从而防止评估指标被宽松匹配虚高。
+	if !strings.EqualFold(basename(found.File), basename(expected.File)) {
 		return false
 	}
 	// 行号：在 expected 范围内（含容差）
@@ -184,8 +199,12 @@ func isMatch(found FoundIssue, expected ExpectedIssue) bool {
 	return true
 }
 
-func containsAny(s, substr string) bool {
-	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+// basename 提取路径中的文件名部分；不含 '/' 时原样返回。
+func basename(path string) string {
+	if i := strings.LastIndexByte(path, '/'); i >= 0 {
+		return path[i+1:]
+	}
+	return path
 }
 
 // loadCases 加载 corpus 目录下的所有 JSON 测试用例。

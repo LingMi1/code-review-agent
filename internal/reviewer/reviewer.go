@@ -136,8 +136,8 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 	s.store.AuditLog("review.started", prNumber, repoFullName, fmt.Sprintf("review_id=%d", reviewID))
 
 	// 2. 获取 PR diff。
-	_, fetchSpan := otel.StartSpan(ctx, "github.fetch_diff")
-	rawDiff, err := s.gh.PRDiff(ctx, owner, repoName, prNumber)
+	fetchCtx, fetchSpan := otel.StartSpan(ctx, "github.fetch_diff")
+	rawDiff, err := s.gh.PRDiff(fetchCtx, owner, repoName, prNumber)
 	fetchSpan.End()
 	if err != nil {
 		s.store.AuditLog("review.failed", prNumber, repoFullName, err.Error())
@@ -223,8 +223,8 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 			resultErr = fmt.Errorf("chunked review: %w", cerr)
 			return resultErr
 		}
-		_, postSpan := otel.StartSpan(ctx, "github.post_review")
-		postResult, perr := review.Post(ctx, s.gh, owner, repoName, prNumber, headSHA, merged)
+		postCtx, postSpan := otel.StartSpan(ctx, "github.post_review")
+		postResult, perr := review.Post(postCtx, s.gh, owner, repoName, prNumber, headSHA, merged)
 		postSpan.End()
 		if perr != nil {
 			s.store.AuditLog("review.failed", prNumber, repoFullName, perr.Error())
@@ -244,7 +244,7 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 		const maxPromptBytes = 32_000
 		reviewPrompt = prompt.TruncatePrompt(reviewPrompt, maxPromptBytes)
 
-		_, cognitionSpan := otel.StartSpan(ctx, "cognition.run_review")
+		cognitionCtx, cognitionSpan := otel.StartSpan(ctx, "cognition.run_review")
 		slog.InfoContext(ctx, "calling agent-go cognition",
 			"pr", prNumber,
 			"prompt_bytes", len(reviewPrompt),
@@ -252,9 +252,9 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 		)
 		var result *cognition.ReviewResult
 		if usePlanExecute {
-			result, err = s.cog.RunPlanExecuteReview(ctx, sessionBase, reviewPrompt, 8)
+			result, err = s.cog.RunPlanExecuteReview(cognitionCtx, sessionBase, reviewPrompt, 8)
 		} else {
-			result, err = s.cog.RunReview(ctx, cognition.ReviewRequest{
+			result, err = s.cog.RunReview(cognitionCtx, cognition.ReviewRequest{
 				SessionID: sessionBase,
 				Query:     reviewPrompt,
 				AgentType: "react",
@@ -276,8 +276,8 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 			"output_chars", len(result.Text),
 		)
 
-		_, postSpan := otel.StartSpan(ctx, "github.post_review")
-		postResult, perr := review.ParseAndPost(ctx, s.gh, owner, repoName, prNumber, headSHA, result.Text)
+		postCtx, postSpan := otel.StartSpan(ctx, "github.post_review")
+		postResult, perr := review.ParseAndPost(postCtx, s.gh, owner, repoName, prNumber, headSHA, result.Text)
 		postSpan.End()
 		if perr != nil {
 			s.store.AuditLog("review.failed", prNumber, repoFullName, perr.Error())
@@ -317,8 +317,8 @@ func (s *Service) reviewChunks(ctx context.Context, prTitle, sessionBase string,
 		chunkTitle := fmt.Sprintf("%s (part %d/%d)", prTitle, i+1, len(chunks))
 		chunkPrompt := prompt.TruncatePrompt(prompt.BuildReviewPrompt(chunkTitle, chunk), maxPromptBytes)
 
-		_, span := otel.StartSpan(ctx, fmt.Sprintf("cognition.chunk_%d", i+1))
-		result, err := s.cog.RunReview(ctx, cognition.ReviewRequest{
+		chunkCtx, span := otel.StartSpan(ctx, fmt.Sprintf("cognition.chunk_%d", i+1))
+		result, err := s.cog.RunReview(chunkCtx, cognition.ReviewRequest{
 			SessionID: fmt.Sprintf("%s-chunk-%d", sessionBase, i+1),
 			Query:     chunkPrompt,
 			AgentType: "react",
