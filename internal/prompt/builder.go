@@ -31,7 +31,7 @@ func BuildReviewPrompt(prTitle string, files []diff.FileDiff) string {
 	for _, f := range files {
 		b.WriteString(fmt.Sprintf("### %s\n\n", f.FileName))
 		b.WriteString("```diff\n")
-		b.WriteString(hunkTrim(f))
+		b.WriteString(f.Hunk)
 		b.WriteString("\n```\n\n")
 	}
 
@@ -76,7 +76,7 @@ func BuildPlanExecutePrompt(prTitle string, files []diff.FileDiff) string {
 	for _, f := range files {
 		b.WriteString(fmt.Sprintf("### %s\n\n", f.FileName))
 		b.WriteString("```diff\n")
-		b.WriteString(hunkTrim(f))
+		b.WriteString(f.Hunk)
 		b.WriteString("\n```\n\n")
 	}
 
@@ -128,21 +128,6 @@ func writeJSONResponseFormat(b *strings.Builder) {
 	b.WriteString("- Be specific: include exact line numbers and concrete code suggestions.\n")
 	b.WriteString("- Focus on: correctness bugs > security > performance > style.\n")
 	b.WriteString("- Output ONLY the JSON object, no other text.\n")
-}
-
-// hunkTrim 去掉文件的 diff 中可能超长的部分。
-func hunkTrim(f diff.FileDiff) string {
-	const maxLen = 6000
-	s := f.Hunk
-	if len(s) <= maxLen {
-		return s
-	}
-	cut := s[:maxLen]
-	// 按字节截断可能落在多字节 UTF-8 字符中间，回退到最近的合法 rune 边界。
-	for len(cut) > 0 && !utf8.ValidString(cut) {
-		cut = cut[:len(cut)-1]
-	}
-	return cut + "\n... (truncated)"
 }
 
 // TruncatePrompt 确保 prompt 总长不超过 maxBytes 字节。
