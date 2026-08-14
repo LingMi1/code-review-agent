@@ -20,6 +20,7 @@ type Hub struct {
 	mu       sync.RWMutex
 	channels map[string]chan Event // session_id → event channel
 	done     map[string]chan struct{}
+	allowed  map[string]bool // 允许的跨域 origin 白名单（SetAllowedOrigins 配置，nil 表示不开放跨域）
 }
 
 // NewHub 创建新的 SSE hub。
@@ -28,6 +29,11 @@ func NewHub() *Hub {
 		channels: make(map[string]chan Event),
 		done:     make(map[string]chan struct{}),
 	}
+}
+
+// SetAllowedOrigins 设置允许跨域访问的 origin 白名单（复用主服务的 ALLOWED_ORIGINS）。
+func (h *Hub) SetAllowedOrigins(origins map[string]bool) {
+	h.allowed = origins
 }
 
 // Subscribe 注册一个 SSE 订阅。返回事件 channel 和取消函数。
@@ -86,7 +92,10 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if origin := r.Header.Get("Origin"); origin != "" && h.allowed != nil && h.allowed[origin] {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+	}
 	w.Header().Set("X-Accel-Buffering", "no") // 禁用 nginx 缓冲
 
 	flusher, ok := w.(http.Flusher)

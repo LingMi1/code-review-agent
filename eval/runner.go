@@ -124,6 +124,7 @@ func evaluateCase(c EvalCase, exp ExpectedResult, found []FoundIssue, latency ti
 				matchedExp[j] = true
 				matchedFound[i] = true
 				result.TruePositives++
+				break
 			}
 		}
 	}

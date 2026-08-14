@@ -1,0 +1,7 @@
+{
+  "id": "case-018",
+  "name": "Parser — ignored error and division by zero",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/parser.go b/parser.go\nnew file mode 100644\n--- /dev/null\n+++ b/parser.go\n@@ -0,0 +1,13 @@\n+package main\n+\n+import (\n+\t\"fmt\"\n+\t\"strconv\"\n+)\n+\n+func parse(s string) int {\n+\tn, _ := strconv.Atoi(s)\n+\tvalue := 100 / n\n+\tfmt.Printf(\"parsed %d\\n\", value)\n+\treturn value\n+}\n"
+}

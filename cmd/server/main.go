@@ -97,6 +97,7 @@ func main() {
 
 	// SSE hub — 实时推送审查进度
 	sseHub := sse.NewHub()
+	sseHub.SetAllowedOrigins(allowedOrigins())
 
 	// 审查服务：编排 diff 拉取 → 认知面调用 → 结果投递。
 	reviewSvc := reviewer.New(db, cogClient, ghClient, sseHub, m, 5)

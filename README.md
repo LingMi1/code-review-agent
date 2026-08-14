@@ -72,8 +72,9 @@ Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first d
 
 ### Observability
 
-- **OpenTelemetry**: Real OTel Go SDK with OTLP gRPC exporter. Spans flow across HTTP → gRPC → agent-go cognition via W3C TraceContext (`otelgrpc` + `otelhttp`).
+- **OpenTelemetry**: Real OTel Go SDK with OTLP gRPC exporter. Spans flow across HTTP → gRPC via W3C TraceContext (`otelgrpc` + `otelhttp`).
 - **Tracing config**: Set `OTEL_EXPORTER_OTLP_ENDPOINT` to send traces to a collector (Jaeger/Tempo/etc.). If unset, traces are sampled locally but not exported.
+- **End-to-end traces**: Enable OTel on agent-go's cognition too (`COGNITION_OTEL_ENABLED=true` + `COGNITION_OTEL_EXPORTER_OTLP_ENDPOINT` → same collector) to join Go and Python spans in one trace.
 - **`X-Trace-ID`**: Every response carries a trace ID header for correlating logs and traces.
 - **Prometheus**: `/metrics` endpoint with review counts, latency, and error rates
 - **Structured Logging**: `log/slog` with `trace_id` / `span_id` fields
@@ -86,7 +87,7 @@ Complex PRs (10+ files) are reviewed in **plan-execute mode**: the agent first d
 
 ### Evaluation
 
-- **15 Labeled PR Test Cases**: Curated corpus spanning security, bugs, performance, and style
+- **18 Labeled PR Test Cases**: Curated corpus spanning security, bugs, performance, and style — including multi-bug and distractor cases
 - **Precision / Recall / F1 Metrics**: Automated evaluation runner measures agent quality
 - See [Evaluation](#evaluation) below for real numbers
 
@@ -179,7 +180,7 @@ code-review-agent/
 │   ├── middleware/             # HTTP middleware (OTel instrumentation)
 │   └── sse/                    # SSE broadcast hub (real-time agent stream)
 ├── eval/                       # Evaluation framework
-│   ├── corpus/                 # 15 labeled test PRs
+│   ├── corpus/                 # 18 labeled test PRs
 │   ├── expected/               # Expected issues for each case
 │   ├── runner.go               # Precision/Recall/F1 computation
 │   └── reviewer_cognition.go   # Real agent-go cognition reviewer
@@ -210,7 +211,7 @@ No LLM SDK, no prompt templates, no tool definitions in this repo. agent-go hand
 
 ## Evaluation
 
-The evaluation framework measures agent quality against a 15-case labeled corpus. Each case contains a diff with a known issue (SQL injection, race condition, XSS, nil-pointer dereference, etc.) and an expected issue annotation.
+The evaluation framework measures agent quality against an 18-case labeled corpus. Each case contains a diff with one or more known issues (SQL injection, race condition, XSS, nil-pointer dereference, etc.) and an expected issue annotation. The last three cases (016–018) are intentionally harder: multiple bugs in a single diff plus distractors, so a single glaring bug no longer inflates Recall.
 
 Run with the mock reviewer (baseline) or the real agent-go cognition:
 
@@ -224,18 +225,20 @@ go run ./cmd/eval/ -real
 
 ### Results (DeepSeek-chat)
 
-| Metric | Mock Baseline | DeepSeek (real) |
+| Metric | Mock Baseline (18 cases) | DeepSeek (15-case run) |
 |---|---|---|
-| Pass Rate (F1 ≥ 0.5) | 47% (7/15) | **73% (11/15)** |
-| Macro Precision | 0.39 | **0.51** |
-| Macro Recall | 0.47 | **1.00** |
-| Macro F1 | 0.42 | **0.68** |
+| Pass Rate (F1 ≥ 0.5) | 56% (10/18) | **73% (11/15)** |
+| Macro Precision | 0.49 | **0.51** |
+| Macro Recall | 0.56 | **1.00** |
+| Macro F1 | 0.52 | **0.68** |
+
+> The real-LLM column is the latest `-real` run on the original 15 cases. Re-run `go run ./cmd/eval/ -real` against agent-go cognition to refresh it for all 18 cases.
 
 Key findings:
 
 - **Recall 1.00**: The real LLM finds every labeled bug and security vulnerability (zero false negatives) — the most important property for a code review tool.
 - **Precision 0.51**: The agent also reports additional findings beyond the labeled set (e.g. deprecated APIs, missing error context). Many of these are legitimate but not in the human annotation, which lowers precision under the strict matching rule.
-- **Line-number tolerance**: LLM line estimates and human annotations both carry ±1-2 line noise, so matching uses a ±3 line tolerance.
+- **Multi-bug cases**: Cases 016–018 each contain several real defects in one diff; the mock baseline catches all of them (rule-based), while the real LLM must both find them and avoid matching distractors.
 
 ## Review Format
 

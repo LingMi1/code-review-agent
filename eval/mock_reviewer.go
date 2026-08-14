@@ -42,6 +42,15 @@ func mockReview(diff string, language string) ([]FoundIssue, error) {
 		{`ioutil.ReadFile(`, "reader.go", 8, "medium", "bug", "ReadFile without size limit"},
 		{`i := 0; i < 1000000`, "loop.go", 5, "medium", "performance", "Hardcoded loop bound"},
 		{`for {`, "loop.go", 5, "high", "bug", "Infinite loop without break condition"},
+		// 多 bug 用例：每个文件多个问题，line 为“目标行号 - 命中序号”以配合下方 fileHits 偏移。
+		{`filepath.Join("/uploads", name)`, "upload_handler.go", 11, "high", "security", "Path traversal via unsanitized filename"},
+		{`io.ReadAll(r.Body)`, "upload_handler.go", 11, "medium", "bug", "Unbounded request body read without size limit"},
+		{`f, _ := os.Create(path)`, "upload_handler.go", 11, "medium", "bug", "Error from os.Create ignored"},
+		{`SELECT * FROM items WHERE name LIKE '%`, "search_handler.go", 10, "high", "security", "SQL injection in raw query"},
+		{`client := &http.Client{}`, "search_handler.go", 10, "medium", "performance", "HTTP client without timeout"},
+		{`rows, err := db.Query(q)`, "search_handler.go", 13, "medium", "bug", "Error from db.Query ignored"},
+		{`n, _ := strconv.Atoi(s)`, "parser.go", 8, "medium", "bug", "Error from strconv.Atoi ignored"},
+		{`value := 100 / n`, "parser.go", 8, "medium", "bug", "Division by zero when n is 0"},
 	}
 
 	// 为每个 diff 文件行标记检查结果

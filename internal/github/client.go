@@ -54,39 +54,6 @@ func (c *Client) PRDiff(ctx context.Context, owner, repo string, prNumber int) (
 	return string(data), nil
 }
 
-// PRChangedFiles 获取 PR 变更文件的摘要列表（不含 diff，用于大 PR 降级）。
-func (c *Client) PRChangedFiles(ctx context.Context, owner, repo string, prNumber int) ([]ChangedFile, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/files?per_page=100", c.baseURL, owner, repo, prNumber)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	c.setHeaders(req, "application/vnd.github.v3+json")
-
-	resp, err := c.doWithRetry(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch changed files: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var files []ChangedFile
-	if err := json.NewDecoder(resp.Body).Decode(&files); err != nil {
-		return nil, fmt.Errorf("decode changed files: %w", err)
-	}
-	return files, nil
-}
-
-// ChangedFile 是 PR 中变更文件的摘要。
-type ChangedFile struct {
-	Filename  string `json:"filename"`
-	Status    string `json:"status"` // added, modified, removed, renamed
-	Additions int    `json:"additions"`
-	Deletions int    `json:"deletions"`
-	Changes   int    `json:"changes"`
-	Patch     string `json:"patch,omitempty"`
-}
-
 // ReviewComment 是一条 review 评论。
 type ReviewComment struct {
 	Path     string `json:"path"`

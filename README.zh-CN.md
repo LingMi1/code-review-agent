@@ -72,8 +72,9 @@ GitHub PR webhook / 手动触发
 
 ### 可观测性
 
-- **OpenTelemetry**：真正的 OTel Go SDK + OTLP gRPC exporter，通过 W3C TraceContext（`otelgrpc` + `otelhttp`）实现 HTTP → gRPC → agent-go 认知面全链路追踪
+- **OpenTelemetry**：真正的 OTel Go SDK + OTLP gRPC exporter，通过 W3C TraceContext（`otelgrpc` + `otelhttp`）实现 HTTP → gRPC 链路追踪
 - **追踪配置**：设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 将 trace 发送到 collector（如 Jaeger/Tempo）；未设置时本地采样但不导出
+- **端到端追踪**：在 agent-go 认知面同样开启 OTel（`COGNITION_OTEL_ENABLED=true` + `COGNITION_OTEL_EXPORTER_OTLP_ENDPOINT` 指向同一 collector），即可把 Go 与 Python 两段 span 串进同一条 trace
 - **`X-Trace-ID`**：每个响应都携带 trace ID 头，用于关联日志与 trace
 - **Prometheus**：`/metrics` 端点对外提供审查数量、延迟、错误率
 - **结构化日志**：`log/slog` 带 `trace_id` / `span_id` 字段
@@ -86,7 +87,7 @@ GitHub PR webhook / 手动触发
 
 ### 评估体系
 
-- **15 个标注 PR 测试用例**：覆盖安全、bug、性能、风格四类
+- **18 个标注 PR 测试用例**：覆盖安全、bug、性能、风格四类，含多 bug 与干扰项用例
 - **Precision / Recall / F1 指标**：自动化评估运行器衡量 Agent 质量
 - 真实数据见下方 [评估](#评估)
 
@@ -179,7 +180,7 @@ code-review-agent/
 │   ├── middleware/             # HTTP 中间件（OTel 埋点）
 │   └── sse/                    # SSE 广播中心（实时 Agent 流）
 ├── eval/                       # 评估框架
-│   ├── corpus/                 # 15 个标注测试 PR
+│   ├── corpus/                 # 18 个标注测试 PR
 │   ├── expected/               # 每个用例的期望问题
 │   ├── runner.go               # Precision/Recall/F1 计算
 │   └── reviewer_cognition.go   # 真实 agent-go 认知面审查器
@@ -210,7 +211,7 @@ stream, err := svc.Run(ctx, &agentv1.RunRequest{
 
 ## 评估
 
-评估框架基于 15 个标注用例衡量 Agent 质量。每个用例包含一段带已知问题的 diff（SQL 注入、竞态条件、XSS、空指针解引用等）和对应的问题标注。
+评估框架基于 18 个标注用例衡量 Agent 质量。每个用例包含一段带一个或多个已知问题的 diff（SQL 注入、竞态条件、XSS、空指针解引用等）和对应的问题标注。最后三个用例（016–018）刻意加难：单个 diff 内含多个 bug 并混入干扰项，避免“一个显眼 bug 就拉满 Recall”的注水现象。
 
 使用 mock 审查器（基准）或真实 agent-go 认知面运行：
 
@@ -224,18 +225,20 @@ go run ./cmd/eval/ -real
 
 ### 结果（DeepSeek-chat）
 
-| 指标 | Mock 基准 | DeepSeek（真实） |
+| 指标 | Mock 基准（18 用例） | DeepSeek（15 用例运行） |
 |---|---|---|
-| 通过率（F1 ≥ 0.5） | 47%（7/15） | **73%（11/15）** |
-| Macro Precision | 0.39 | **0.51** |
-| Macro Recall | 0.47 | **1.00** |
-| Macro F1 | 0.42 | **0.68** |
+| 通过率（F1 ≥ 0.5） | 56%（10/18） | **73%（11/15）** |
+| Macro Precision | 0.49 | **0.51** |
+| Macro Recall | 0.56 | **1.00** |
+| Macro F1 | 0.52 | **0.68** |
+
+> 真实 LLM 一列为在最初 15 个用例上最近一次 `-real` 运行的结果。针对 agent-go 认知面重跑 `go run ./cmd/eval/ -real` 即可刷新到全部 18 个用例。
 
 关键发现：
 
 - **Recall 1.00**：真实 LLM 找出了所有标注的 bug 和安全漏洞（零漏报）—— 这对代码审查工具是最重要的指标。
 - **Precision 0.51**：Agent 还会报告标注集之外的额外发现（如废弃 API、缺少错误上下文）。其中很多是真实但不在人工标注范围内的问题，在严格匹配规则下降低了 precision。
-- **行号容差**：LLM 的行号估计和人工标注都存在 ±1-2 行的噪声，因此匹配采用 ±3 行容差。
+- **多 bug 用例**：016–018 每个 diff 内含多个真实缺陷；mock 基准（基于规则）能全部命中，真实 LLM 则需在命中缺陷的同时避开干扰项。
 
 ## 审查格式
 

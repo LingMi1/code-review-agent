@@ -1,0 +1,7 @@
+{
+  "id": "case-016",
+  "name": "File upload — path traversal, unbounded read, ignored error",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/upload_handler.go b/upload_handler.go\nnew file mode 100644\n--- /dev/null\n+++ b/upload_handler.go\n@@ -0,0 +1,17 @@\n+package main\n+\n+import (\n+\t\"io\"\n+\t\"net/http\"\n+\t\"os\"\n+\t\"path/filepath\"\n+)\n+\n+func upload(w http.ResponseWriter, r *http.Request) {\n+\tname := r.URL.Query().Get(\"name\")\n+\tpath := filepath.Join(\"/uploads\", name)\n+\tdata, _ := io.ReadAll(r.Body)\n+\tf, _ := os.Create(path)\n+\tf.Write(data)\n+\tf.Close()\n+}\n"
+}

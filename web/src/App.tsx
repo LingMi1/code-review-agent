@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import {
   GitPullRequest,
@@ -7,10 +8,18 @@ import {
 } from 'lucide-react';
 import ReviewList from './pages/ReviewList';
 import ReviewDetail from './pages/ReviewDetail';
+import { fetchHealth } from './api';
 
 export default function App() {
   const location = useLocation();
   const isList = location.pathname === '/';
+  const [online, setOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetchHealth().then(setOnline);
+    const id = setInterval(() => fetchHealth().then(setOnline), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div className="min-h-screen bg-surface flex">
@@ -71,8 +80,10 @@ export default function App() {
             </div>
             <div className="flex items-center gap-3 text-sm text-gray-500">
               <span className="hidden sm:inline-flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                Agent Online
+                <span className={`w-2 h-2 rounded-full ${
+                  online === true ? 'bg-emerald-500' : online === false ? 'bg-red-500' : 'bg-gray-400'
+                }`} />
+                {online === true ? 'Agent Online' : online === false ? 'Agent Offline' : 'Checking…'}
               </span>
             </div>
           </div>

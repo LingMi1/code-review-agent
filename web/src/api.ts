@@ -14,6 +14,15 @@ export interface ReviewRecord {
 
 const BASE = '/api';
 
+export async function fetchHealth(): Promise<boolean> {
+  try {
+    const res = await fetch('/health');
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchReviews(): Promise<ReviewRecord[]> {
   const res = await fetch(`${BASE}/reviews`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
