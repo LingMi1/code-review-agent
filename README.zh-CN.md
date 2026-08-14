@@ -1,6 +1,7 @@
 # Code Review Agent
 
 [![CI](https://github.com/LingMi1/code-review-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/LingMi1/code-review-agent/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/LingMi1/code-review-agent/branch/main/graph/badge.svg)](https://codecov.io/gh/LingMi1/code-review-agent)
 [![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
