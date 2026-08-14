@@ -20,3 +20,7 @@ data/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+
+# Eval artifacts
+eval/report.json
+coverage.out

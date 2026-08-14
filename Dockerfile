@@ -18,15 +18,22 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 # --- 运行时镜像 ---
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget
 ENV TZ=Asia/Shanghai
 
 WORKDIR /app
 COPY --from=builder /app/server .
 
 # 数据目录
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown 65532:65532 /app/data
+
+# 非 root 用户
+USER 65532:65532
 
 EXPOSE 8080
+
+# 健康检查（独立 docker run 时也生效）
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+    CMD wget -qO- http://localhost:8080/health || exit 1
 
 CMD ["/app/server"]

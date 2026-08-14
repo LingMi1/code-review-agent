@@ -9,11 +9,21 @@ import (
 	"strings"
 )
 
-// writeJSON 写入 JSON 响应。
+// writeJSON 写入 JSON 响应（HTTP 200）。
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.Error("writeJSON: encode failed", "error", err)
+	}
+}
+
+// writeError 写入 JSON 格式的错误响应。msg 对外可见，不得包含内部细节。
+func writeError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": msg}); err != nil {
+		slog.Error("writeError: encode failed", "error", err)
 	}
 }
 

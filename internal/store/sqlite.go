@@ -42,7 +42,8 @@ type Store struct {
 
 // New 打开 SQLite 数据库并建表。
 func New(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+	// _pragma=busy_timeout(5000)：遇锁等待 5s 而非立即返回 SQLITE_BUSY
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}

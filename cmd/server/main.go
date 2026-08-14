@@ -18,7 +18,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -134,7 +136,7 @@ func main() {
 		if r.Method == http.MethodPost {
 			// 手动触发审查：校验 API token（若已配置）
 			if !authorizeManualTrigger(r, cfg.APIToken) {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 			var req struct {
@@ -143,11 +145,11 @@ func main() {
 				PRNumber int    `json:"pr_number"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				http.Error(w, "invalid JSON body", http.StatusBadRequest)
+				writeError(w, http.StatusBadRequest, "invalid JSON body")
 				return
 			}
 			if req.Owner == "" || req.Repo == "" || req.PRNumber <= 0 {
-				http.Error(w, "owner, repo, pr_number are required", http.StatusBadRequest)
+				writeError(w, http.StatusBadRequest, "owner, repo, pr_number are required")
 				return
 			}
 			slog.Info("manual review trigger",
@@ -159,7 +161,8 @@ func main() {
 			// 预创建记录并复用其 ID，避免审查服务内部重复创建。
 			reviewID, err := db.InsertReview(req.PRNumber, req.Owner+"/"+req.Repo, "")
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				slog.Error("insert review failed", "error", err)
+				writeError(w, http.StatusInternalServerError, "failed to create review")
 				return
 			}
 			manualWG.Add(1)
@@ -174,10 +177,15 @@ func main() {
 			})
 			return
 		}
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
 		// GET: 列表
 		reviews, err := db.ListReviews(50)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			slog.Error("list reviews failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to list reviews")
 			return
 		}
 		writeJSON(w, reviews)
@@ -189,14 +197,23 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
 		id, err := parseID(r.URL.Path, "/api/reviews/")
 		if err != nil {
-			http.Error(w, "invalid review ID", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "invalid review ID")
 			return
 		}
 		review, err := db.GetReview(int64(id))
 		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "review not found")
+			} else {
+				slog.Error("get review failed", "id", id, "error", err)
+				writeError(w, http.StatusInternalServerError, "failed to get review")
+			}
 			return
 		}
 		writeJSON(w, review)
@@ -227,7 +244,7 @@ func main() {
 		if err := srv.Shutdown(ctx); err != nil {
 			slog.Error("server shutdown error", "error", err)
 		}
-		wh.Wait()   // webhook 触发的 review
+		wh.Wait()      // webhook 触发的 review
 		manualWG.Wait() // 手动触发的 review
 		slog.Info("graceful shutdown complete")
 	}()
