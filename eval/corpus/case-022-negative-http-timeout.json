@@ -3,5 +3,5 @@
   "name": "Negative — HTTP client with timeout",
   "category": "performance",
   "language": "go",
-  "diff": "diff --git a/fetch.go b/fetch.go\nnew file mode 100644\n--- /dev/null\n+++ b/fetch.go\n@@ -0,0 +1,4 @@\n+func fetch(url string) (*http.Response, error) {\n+\tclient := &http.Client{Timeout: 10 * time.Second}\n+\treturn client.Get(url)\n+}\n"
+  "diff": "diff --git a/fetch.go b/fetch.go\nnew file mode 100644\n--- /dev/null\n+++ b/fetch.go\n@@ -0,0 +1,11 @@\n+package main\n+\n+import (\n+\t\"net/http\"\n+\t\"time\"\n+)\n+\n+func fetch(url string) (*http.Response, error) {\n+\tclient := &http.Client{Timeout: 10 * time.Second}\n+\treturn client.Get(url)\n+}\n"
 }

@@ -3,5 +3,5 @@
   "name": "Negative — bounded concurrent work (no race)",
   "category": "bug",
   "language": "go",
-  "diff": "diff --git a/worker.go b/worker.go\nnew file mode 100644\n--- /dev/null\n+++ b/worker.go\n@@ -0,0 +1,9 @@\n+func sumSquares(items []int) int {\n+\tch := make(chan int, len(items))\n+\tfor i := 0; i < len(items); i++ {\n+\t\tgo square(items[i], ch)\n+\t}\n+\ttotal := 0\n+\tfor i := 0; i < len(items); i++ {\n+\t\ttotal += <-ch\n+\t}\n+\treturn total\n+}\n+\n+func square(n int, ch chan int) { ch <- n * n }\n"
+  "diff": "diff --git a/worker.go b/worker.go\nnew file mode 100644\n--- /dev/null\n+++ b/worker.go\n@@ -0,0 +1,15 @@\n+package main\n+\n+func sumSquares(items []int) int {\n+\tch := make(chan int, len(items))\n+\tfor i := 0; i < len(items); i++ {\n+\t\tgo square(items[i], ch)\n+\t}\n+\ttotal := 0\n+\tfor i := 0; i < len(items); i++ {\n+\t\ttotal += <-ch\n+\t}\n+\treturn total\n+}\n+\n+func square(n int, ch chan int) { ch <- n * n }\n"
 }

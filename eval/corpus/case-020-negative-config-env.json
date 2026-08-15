@@ -3,5 +3,5 @@
   "name": "Negative — config from environment (no hardcoded secrets)",
   "category": "security",
   "language": "go",
-  "diff": "diff --git a/config.go b/config.go\nnew file mode 100644\n--- /dev/null\n+++ b/config.go\n@@ -0,0 +1,5 @@\n+func loadConfig() Config {\n+\treturn Config{\n+\t\tDBPassword: os.Getenv(\"DB_PASSWORD\"),\n+\t}\n+}\n"
+  "diff": "diff --git a/config.go b/config.go\nnew file mode 100644\n--- /dev/null\n+++ b/config.go\n@@ -0,0 +1,13 @@\n+package main\n+\n+import \"os\"\n+\n+type Config struct {\n+\tDBPassword string\n+}\n+\n+func loadConfig() Config {\n+\treturn Config{\n+\t\tDBPassword: os.Getenv(\"DB_PASSWORD\"),\n+\t}\n+}\n"
 }

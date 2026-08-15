@@ -3,5 +3,5 @@
   "name": "Negative — file read with error handling",
   "category": "bug",
   "language": "go",
-  "diff": "diff --git a/reader.go b/reader.go\nnew file mode 100644\n--- /dev/null\n+++ b/reader.go\n@@ -0,0 +1,5 @@\n+func readConfig(path string) ([]byte, error) {\n+\tdata, err := os.ReadFile(path)\n+\tif err != nil {\n+\t\treturn nil, err\n+\t}\n+\treturn data, nil\n+}\n"
+  "diff": "diff --git a/reader.go b/reader.go\nnew file mode 100644\n--- /dev/null\n+++ b/reader.go\n@@ -0,0 +1,11 @@\n+package main\n+\n+import \"os\"\n+\n+func readConfig(path string) ([]byte, error) {\n+\tdata, err := os.ReadFile(path)\n+\tif err != nil {\n+\t\treturn nil, err\n+\t}\n+\treturn data, nil\n+}\n"
 }

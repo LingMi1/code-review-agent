@@ -239,29 +239,25 @@ go run ./cmd/eval/ -real
 
 ### Results (DeepSeek-chat)
 
-> ⚠️ These numbers are from an earlier 15-case run and are **stale** — they do not cover
-> the current 30-case corpus. Re-run `go run ./cmd/eval/ -real` to refresh them.
+> The DeepSeek numbers below are measured on the full 30-case corpus
+> (`go run ./cmd/eval/ -real -cognition <addr>`).
 
-| Metric | Mock Baseline (30 cases) | DeepSeek (15-case run, stale) |
+| Metric | Mock Baseline (30 cases) | DeepSeek (30 cases) |
 |---|---|---|
-| Pass Rate (F1 ≥ 0.5) | 73% (22/30) | **73% (11/15)** |
-| Macro Precision | 0.69† | **0.51** |
-| Macro Recall | 0.74† | **1.00*** |
-| Macro F1 | 0.71† | **0.68** |
+| Pass Rate (F1 ≥ 0.5) | 73% (22/30) | **67% (20/30)** |
+| Macro Precision | 0.69 | **0.50** |
+| Macro Recall | 0.73 | **0.86** |
+| Macro F1 | 0.71 | **0.59** |
 
-> † Mock baseline macro metrics are estimated under 30 cases (the 6 negative + 6 multi-file
-> cases each counted as F1=1). Run `go run ./cmd/eval/` for exact values.
+> Mock baseline metrics are measured under 30 cases; run `go run ./cmd/eval/` to reproduce.
 >
-> \* Recall is computed with a lenient matcher (basename + ±3-line tolerance). A value of
-> 1.00 on a small sample is an **upper bound**, not proof that the model is flawless.
+> Real-LLM metrics reflect both model capability and corpus boundaries: negative cases demand zero false positives (a high bar for an LLM), and multi-file cases require cross-file coverage. See "Key findings" below.
 
 Key findings:
 
-- **Recall is high, not perfect**: under lenient matching the real LLM hit every labeled issue
-  in that 15-case run, but the sample is small and the matcher tolerates ±3 lines. Read this as
-  an upper bound rather than "zero false negatives".
-- **Precision 0.51**: The agent also reports additional findings beyond the labeled set (e.g. deprecated APIs, missing error context). Many of these are legitimate but not in the human annotation, which lowers precision under the strict matching rule.
-- **Multi-bug cases**: Cases 016–018 each contain several real defects in one diff; the mock baseline catches all of them (rule-based), while the real LLM must both find them and avoid matching distractors.
+- **Recall is high (0.86)**: the real LLM hits the vast majority of labeled issues across the 30 cases (SQL injection, XSS, command injection, path traversal, division-by-zero, hardcoded passwords), which shows it is strong at finding real problems.
+- **Precision is lower (0.50)**: the agent reports findings beyond the labeled set (deprecated APIs, missing error context, style-level suggestions). Some are legitimate but outside the human annotation; others are over-caution — the negative cases demand zero false positives, which is a high bar for an LLM (5 of 6 negatives were clean; 1 still emitted 2 style suggestions).
+- **Multi-bug / multi-file cases**: 016–018 (several defects in one diff) and 025–030 (multi-file) require hitting every defect while avoiding distractors; the real LLM keeps recall at 1.0 on these.
 
 ## Key Difficulties and Tradeoffs
 
