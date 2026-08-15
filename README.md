@@ -8,7 +8,7 @@
 
 > [简体中文](README.zh-CN.md)
 
-AI-powered code review that catches bugs, security issues, and performance problems in your pull requests — **powered by [agent-go](https://github.com/LingMi1/agent-go)**, the production-grade multi-agent platform.
+An AI code review tool that catches bugs, security holes, and performance problems in pull requests — with all of its "thinking" delegated to [agent-go](https://github.com/LingMi1/agent-go), a production-grade multi-agent platform. This repo ships no LLM SDK of its own.
 
 ## Screenshots
 
@@ -49,11 +49,11 @@ GitHub PR webhook / manual trigger
 
 ## What Makes This Different
 
-Most AI code review tools are a thin wrapper around an LLM API: build a prompt, send it to OpenAI/Claude, post the reply. This project is different in three ways:
+Most AI code review tools are little more than a thin wrapper around an LLM API: build a prompt, send it to OpenAI or Claude, paste the reply back onto the PR. This project stands apart in three ways:
 
-- **Zero LLM SDK — cognition is a separate platform**: every review goes through [agent-go](https://github.com/LingMi1/agent-go), a production multi-agent platform (ReAct / Plan-Execute, tool calling, structured JSON output). This repo only builds prompts and parses results over gRPC — the same split you'd build in a real "agent application on top of an agent platform" role.
-- **Measured, not vibes**: a 30-case labeled corpus (security/bug/perf/style, plus negative and multi-file cases) is scored against a real LLM (DeepSeek) and published with honest P/R/F1 — including where the LLM fails (precision 0.50, negative-case false positives). Mock vs. real numbers are both reproducible.
-- **Production engineering, not a demo**: HMAC webhook verification, rate limiting, panic recovery, graceful degradation, de-dup, OTel tracing, Prometheus metrics, e2e tests, and CI (test/lint/vet/eval/web build) — the parts a code-review "script" usually skips.
+- **No LLM SDK — cognition is a separate platform**: every review is handled by [agent-go](https://github.com/LingMi1/agent-go), a production multi-agent platform with ReAct / Plan-Execute, tool calling, and structured JSON output. This repo only builds prompts and parses results over gRPC — the exact split you'd own in an "agent application on top of an agent platform" role.
+- **Measured, not vibes**: a 30-case labeled corpus (security / bug / performance / style, plus negative and multi-file cases) is scored against a real LLM (DeepSeek) and published with honest P/R/F1 — including where the LLM falls short (precision 0.50, false positives on negative cases). Both mock and real numbers are reproducible.
+- **Production engineering, not a demo**: HMAC webhook verification, rate limiting, panic recovery, graceful degradation, de-duplication, OTel tracing, Prometheus metrics, e2e tests, and CI (test/lint/vet/eval/web build) — the parts a "script-style" code review usually skips.
 
 ## Features
 
@@ -72,12 +72,12 @@ Most AI code review tools are a thin wrapper around an LLM API: build a prompt, 
 
 ### Cost Control
 
-- **Model Routing**: `react` mode → agent-go `executor` role (default DeepSeek, cheap); `plan_execute` mode → agent-go `planner` role (agent-go selects a stronger model via its own `COGNITION_PLANNER_MODEL`)
+- **Model Routing**: `react` mode → agent-go `executor` role (default DeepSeek, cheap); `plan_execute` mode → agent-go `planner` role (agent-go picks a stronger model via its own `COGNITION_PLANNER_MODEL`)
 - **Prompt Truncation**: Prompts capped at 32000 bytes (~31 KB); oversized diffs are split into ~28KB chunks instead of silently dropping code
 
 ### Multi-Agent (Plan-Execute)
 
-PRs with 10+ files that still fit in a single prompt are reviewed in **plan-execute mode**: the agent first decomposes the review into independent sub-tasks (security, bug detection, performance, code quality), executes each in parallel, then aggregates results into a single structured review. Larger diffs fall back to chunked react review to avoid prompt truncation.
+PRs with 10+ files that still fit in a single prompt are reviewed in **plan-execute mode**: the agent first breaks the review into independent sub-tasks (security, bug detection, performance, code quality), runs them in parallel, then folds the results into one structured review. Larger diffs fall back to chunked react review to avoid prompt truncation.
 
 ### Security & Reliability
 
@@ -233,7 +233,7 @@ No LLM SDK and no tool definitions in this repo — agent-go handles the entire 
 
 ## Evaluation
 
-The evaluation framework measures agent quality against a 30-case labeled corpus (6 negative + 6 multi-file cases). Each case contains a diff with one or more known issues (SQL injection, race condition, XSS, nil-pointer dereference, etc.) and an expected issue annotation. Negative cases contain clean code that should yield zero issues. Multi-file cases pack several files into one diff to exercise cross-file coverage. The last three single-file cases (016–018) are intentionally harder: multiple bugs in a single diff plus distractors, so a single glaring bug no longer inflates Recall.
+The evaluation framework measures agent quality against a 30-case labeled corpus (6 negative + 6 multi-file cases). Each case contains a diff with one or more known issues (SQL injection, race condition, XSS, nil-pointer dereference, etc.) and an expected issue annotation. The last three single-file cases (016–018) are intentionally harder: multiple bugs in a single diff plus distractors, so a single glaring bug no longer inflates Recall.
 
 Run with the mock reviewer (baseline) or the real agent-go cognition:
 

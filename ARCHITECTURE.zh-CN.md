@@ -2,11 +2,11 @@
 
 > [English](ARCHITECTURE.md)
 
-本文讲 code-review-agent 是怎么设计的、每个关键决策背后做了哪些取舍，给想搞懂系统「为什么这样建」的审阅者和面试官看。
+这份文档说明 code-review-agent 是怎么设计的，以及每个关键决策背后做了哪些取舍。写给想弄懂「系统为什么这样建」的审阅者和面试官。
 
 ## 概览
 
-code-review-agent 是一个自动审查 Pull Request 的 GitHub Webhook 服务。本质上是用 Go 写的一层轻量编排，把真正的「思考」交给外部的 **agent-go cognition** 服务，通过 gRPC 调用。
+code-review-agent 是一个自动审查 Pull Request 的 GitHub Webhook 服务。它本质上是用 Go 写的一层编排逻辑，把真正的「思考」交给外部的 **agent-go cognition** 服务，通过 gRPC 调用。
 
 ```
 GitHub webhook ──▶ Go 服务 ──▶ agent-go cognition (gRPC)
@@ -61,14 +61,14 @@ webhook 事件
 agent-go 认知面是按**角色**而不是按请求来路由模型的。code-review-agent 把两种策略映射到这些角色上：
 
 - `react`（小 PR）→ `executor` 角色 → 便宜、快的模型（deepseek）
-- `plan_execute`（10+ 文件且能塞进单条 prompt）→ `planner` 角色 → 更强的模型
+- `plan_execute`（10+ 文件且能装进单条 prompt）→ `planner` 角色 → 更强的模型
 - `react` 分块（diff 过大）→ `executor` 角色，切成约 28KB 一块
 
 这样不用自己复刻一套 LLM 技术栈，就能在成本和效果之间做选择。
 
 ### 3. gRPC 边界上熔断 + 重试
 
-认知面客户端带熔断器，让不稳定的认知面服务快速失败，而不是级联出一堆超时。GitHub 的 HTTP 调用有带 `Retry-After` 退避的有界重试；重试前会重置请求体，POST 永远不会发出空 payload。
+认知面客户端带熔断器，让不稳定的认知面服务快速失败，而不是引发一连串超时。GitHub 的 HTTP 调用有带 `Retry-After` 退避的有界重试；重试前会重置请求体，POST 永远不会发出空 payload。
 
 ### 4. 让 LLM 输出结构化 JSON
 
