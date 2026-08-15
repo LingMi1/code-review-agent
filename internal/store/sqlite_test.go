@@ -10,7 +10,7 @@ func TestStoreCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	id, err := s.InsertReview(123, "owner/repo", "deadbeef")
 	if err != nil {

@@ -148,7 +148,7 @@ func (s *Store) ListReviews(limit int) ([]ReviewRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var records []ReviewRecord
 	for rows.Next() {

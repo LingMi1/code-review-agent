@@ -64,7 +64,7 @@ func main() {
 		slog.Error("failed to init OpenTelemetry", "error", err)
 		os.Exit(1)
 	}
-	defer shutdown(context.Background())
+	defer func() { _ = shutdown(context.Background()) }()
 
 	// Prometheus 指标
 	m := metrics.New()
@@ -77,7 +77,7 @@ func main() {
 		slog.Error("failed to connect to agent-go cognition", "error", err)
 		os.Exit(1)
 	}
-	defer cogClient.Close()
+	defer func() { _ = cogClient.Close() }()
 
 	// 确保 SQLite 数据目录存在（跟随可配置的 SQLITE_PATH，而非硬编码 "data"）。
 	if dir := filepath.Dir(cfg.SQLitePath); dir != "" && dir != "." {
@@ -92,7 +92,7 @@ func main() {
 		slog.Error("failed to open SQLite", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// SSE hub — 实时推送审查进度
 	sseHub := sse.NewHub()

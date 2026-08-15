@@ -45,7 +45,7 @@ func (c *Client) PRDiff(ctx context.Context, owner, repo string, prNumber int) (
 	if err != nil {
 		return "", fmt.Errorf("fetch PR diff: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -100,7 +100,7 @@ func (c *Client) PostReview(ctx context.Context, owner, repo string, prNumber in
 	if err != nil {
 		return fmt.Errorf("post review: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// HTTP 201 Created on success
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
@@ -130,7 +130,7 @@ func (c *Client) PostIssueComment(ctx context.Context, owner, repo string, prNum
 	if err != nil {
 		return fmt.Errorf("post comment: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -176,7 +176,7 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 
 		// 处理 API 限流
 		if resp.StatusCode == http.StatusTooManyRequests {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			retryAfter := resp.Header.Get("Retry-After")
 			slog.Warn("github: rate limited", "retry_after", retryAfter)
 			lastErr = fmt.Errorf("github rate limited (HTTP 429, Retry-After=%s)", retryAfter)
@@ -195,7 +195,7 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 		// 401 或 403（非限流）表示 token 无效
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("github auth failed (HTTP %d): %s", resp.StatusCode, string(body))
 		}
 

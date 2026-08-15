@@ -6,11 +6,11 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	os.Unsetenv("GITHUB_TOKEN")
-	os.Unsetenv("COGNITION_ADDR")
-	os.Unsetenv("LISTEN_ADDR")
-	os.Unsetenv("SQLITE_PATH")
-	os.Unsetenv("ALLOWED_ORIGINS")
+	_ = os.Unsetenv("GITHUB_TOKEN")
+	_ = os.Unsetenv("COGNITION_ADDR")
+	_ = os.Unsetenv("LISTEN_ADDR")
+	_ = os.Unsetenv("SQLITE_PATH")
+	_ = os.Unsetenv("ALLOWED_ORIGINS")
 
 	cfg := Load()
 
@@ -51,7 +51,7 @@ func TestLoadFromEnv(t *testing.T) {
 }
 
 func TestValidateRequiresGitHubToken(t *testing.T) {
-	os.Unsetenv("GITHUB_TOKEN")
+	_ = os.Unsetenv("GITHUB_TOKEN")
 	cfg := Load()
 	if err := cfg.Validate(); err == nil {
 		t.Error("Validate() should error when GITHUB_TOKEN is empty")

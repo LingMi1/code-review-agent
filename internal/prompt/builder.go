@@ -19,17 +19,17 @@ func BuildReviewPrompt(prTitle string, files []diff.FileDiff) string {
 	b.WriteString("and code style problems.\n\n")
 
 	if prTitle != "" {
-		b.WriteString(fmt.Sprintf("PR Title: %s\n\n", prTitle))
+		fmt.Fprintf(&b, "PR Title: %s\n\n", prTitle)
 	}
 
 	b.WriteString("## Changed Files\n\n")
 	for _, f := range files {
-		b.WriteString(fmt.Sprintf("- `%s` (%d lines changed)\n", f.FileName, f.Lines))
+		fmt.Fprintf(&b, "- `%s` (%d lines changed)\n", f.FileName, f.Lines)
 	}
 	b.WriteString("\n## Diff\n\n")
 
 	for _, f := range files {
-		b.WriteString(fmt.Sprintf("### %s\n\n", f.FileName))
+		fmt.Fprintf(&b, "### %s\n\n", f.FileName)
 		b.WriteString("```diff\n")
 		b.WriteString(f.Hunk)
 		b.WriteString("\n```\n\n")
@@ -50,7 +50,7 @@ func BuildPlanExecutePrompt(prTitle string, files []diff.FileDiff) string {
 	b.WriteString("aggregate the results into a single review.\n\n")
 
 	if prTitle != "" {
-		b.WriteString(fmt.Sprintf("PR Title: %s\n\n", prTitle))
+		fmt.Fprintf(&b, "PR Title: %s\n\n", prTitle)
 	}
 
 	b.WriteString("## Review Plan\n\n")
@@ -69,12 +69,12 @@ func BuildPlanExecutePrompt(prTitle string, files []diff.FileDiff) string {
 
 	b.WriteString("## Changed Files\n\n")
 	for _, f := range files {
-		b.WriteString(fmt.Sprintf("- `%s` (%d lines changed)\n", f.FileName, f.Lines))
+		fmt.Fprintf(&b, "- `%s` (%d lines changed)\n", f.FileName, f.Lines)
 	}
 	b.WriteString("\n## Diff\n\n")
 
 	for _, f := range files {
-		b.WriteString(fmt.Sprintf("### %s\n\n", f.FileName))
+		fmt.Fprintf(&b, "### %s\n\n", f.FileName)
 		b.WriteString("```diff\n")
 		b.WriteString(f.Hunk)
 		b.WriteString("\n```\n\n")
