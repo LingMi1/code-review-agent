@@ -1,5 +1,7 @@
 # Contributing to code-review-agent
 
+> [简体中文](CONTRIBUTING.zh-CN.md)
+
 Thanks for your interest in contributing! code-review-agent is an AI-powered GitHub PR review bot with a Go backend (`cmd/`, `internal/`, `eval/`) and a React + Vite frontend (`web/`).
 
 ## Prerequisites
