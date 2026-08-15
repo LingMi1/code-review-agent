@@ -47,6 +47,14 @@ GitHub PR webhook / manual trigger
 └─────────────────────────────────┘
 ```
 
+## What Makes This Different
+
+Most AI code review tools are a thin wrapper around an LLM API: build a prompt, send it to OpenAI/Claude, post the reply. This project is different in three ways:
+
+- **Zero LLM SDK — cognition is a separate platform**: every review goes through [agent-go](https://github.com/LingMi1/agent-go), a production multi-agent platform (ReAct / Plan-Execute, tool calling, structured JSON output). This repo only builds prompts and parses results over gRPC — the same split you'd build in a real "agent application on top of an agent platform" role.
+- **Measured, not vibes**: a 30-case labeled corpus (security/bug/perf/style, plus negative and multi-file cases) is scored against a real LLM (DeepSeek) and published with honest P/R/F1 — including where the LLM fails (precision 0.50, negative-case false positives). Mock vs. real numbers are both reproducible.
+- **Production engineering, not a demo**: HMAC webhook verification, rate limiting, panic recovery, graceful degradation, de-dup, OTel tracing, Prometheus metrics, e2e tests, and CI (test/lint/vet/eval/web build) — the parts a code-review "script" usually skips.
+
 ## Features
 
 ### Core Pipeline

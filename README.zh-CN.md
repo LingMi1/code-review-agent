@@ -47,6 +47,14 @@ GitHub PR webhook / 手动触发
 └─────────────────────────────────┘
 ```
 
+## 与一般 AI Code Review 项目的区别
+
+大多数 AI code review 工具只是对 LLM API 的一层薄封装：拼个 prompt、发给 OpenAI/Claude、把回复贴到 PR。这个项目在三点上不同：
+
+- **零 LLM SDK —— 认知是独立平台**：每次审查都走 [agent-go](https://github.com/LingMi1/agent-go)（生产级多 Agent 平台，含 ReAct / Plan-Execute、工具调用、结构化 JSON 输出）。本仓库只通过 gRPC 构造 prompt 并解析结果——正是「在 Agent 平台上做 Agent 应用」这一岗位会做的分层。
+- **可量化，而非凭感觉**：30 个标注用例（安全/bug/性能/风格，外加负例与多文件用例）对真实 LLM（DeepSeek）打分，并公开诚实的 P/R/F1——包括 LLM 失败的地方（Precision 0.50、负例误报）。Mock 与真实数字均可复现。
+- **生产级工程，而非 demo**：HMAC webhook 验签、限流、panic 恢复、优雅降级、去重、OTel 追踪、Prometheus 指标、e2e 测试与 CI（test/lint/vet/eval/web build）——这些通常是被「脚本式 code review」跳过的部分。
+
 ## 功能特性
 
 ### 核心流程
@@ -225,7 +233,7 @@ result, err := client.RunReview(ctx, cognition.ReviewRequest{
 
 ## 评估
 
-评估框架基于 30 个标注用例（含 6 个负例 + 6 个多文件用例）衡量 Agent 质量。每个用例包含一段带一个或多个已知问题的 diff（SQL 注入、竞态条件、XSS、空指针解引用等）和对应的问题标注。最后三个用例（016–018）刻意加难：单个 diff 内含多个 bug 并混入干扰项，避免“一个显眼 bug 就拉满 Recall”的注水现象。
+评估框架基于 30 个标注用例（含 6 个负例 + 6 个多文件用例）衡量 Agent 质量。每个用例包含一段带一个或多个已知问题的 diff（SQL 注入、竞态条件、XSS、空指针解引用等）和对应的问题标注。最后三个单文件用例（016–018）刻意加难：单个 diff 内含多个 bug 并混入干扰项，避免“一个显眼 bug 就拉满 Recall”的注水现象。
 
 使用 mock 审查器（基准）或真实 agent-go 认知面运行：
 
