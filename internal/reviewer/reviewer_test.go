@@ -205,7 +205,7 @@ func TestReviewPanicRecovered(t *testing.T) {
 	}
 }
 
-// TestReviewChunked 验证大 diff 触发分块审查：逐块调用认知面并合并结果。
+// TestReviewChunked verifies that a large diff triggers chunked review: each chunk calls cognition and results are merged.
 func TestReviewChunked(t *testing.T) {
 	st := &mockStore{insertID: 42}
 	gh := &mockGitHub{diff: largeDiff()}
@@ -220,7 +220,7 @@ func TestReviewChunked(t *testing.T) {
 	if cog.calls != 2 {
 		t.Fatalf("expected 2 chunked cognition calls, got %d", cog.calls)
 	}
-	// 两块都返回同一条 issue（file:line:category 相同），MergeOutputs 会去重为 1 条。
+	// both chunks return the same issue (same file:line:category), so MergeOutputs dedupes to 1.
 	if st.lastIssues != 1 {
 		t.Fatalf("expected 1 deduped issue, got %d", st.lastIssues)
 	}
@@ -229,7 +229,7 @@ func TestReviewChunked(t *testing.T) {
 	}
 }
 
-// largeDiff 生成一个跨 2 个文件、总字节数 > 28KB 的 diff，触发 ChunkByBytes 拆成 2 块。
+// largeDiff generates a diff spanning 2 files with total bytes > 28KB, triggering ChunkByBytes to split into 2 chunks.
 func largeDiff() string {
 	var b strings.Builder
 	for i := 0; i < 2; i++ {

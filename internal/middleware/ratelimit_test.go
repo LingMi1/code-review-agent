@@ -44,7 +44,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// 第一次请求：通过
+	// First request: allowed
 	rr1 := httptest.NewRecorder()
 	req1 := httptest.NewRequest("GET", "/", nil)
 	req1.RemoteAddr = "1.2.3.4:1234"
@@ -53,7 +53,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 		t.Fatalf("first request: got %d, want 200", rr1.Code)
 	}
 
-	// 第二次请求：被限流
+	// Second request: rate limited
 	rr2 := httptest.NewRecorder()
 	h.ServeHTTP(rr2, req1)
 	if rr2.Code != http.StatusTooManyRequests {

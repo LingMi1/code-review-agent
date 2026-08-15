@@ -70,8 +70,8 @@ func TestTruncatePrompt(t *testing.T) {
 		t.Errorf("TruncatePrompt() missing truncated marker, got %q", got)
 	}
 
-	// 带换行的长文本应在最后一个完整行处截断（结果远短于原文）
-	multi := strings.Repeat("line of text\n", 50) // 650 字节
+	// long multiline text should truncate at the last complete line (result far shorter than original)
+	multi := strings.Repeat("line of text\n", 50) // 650 bytes
 	gotMulti := TruncatePrompt(multi, 100)
 	if len(gotMulti) >= len(multi) {
 		t.Errorf("TruncatePrompt(multiline) len = %d, want < %d", len(gotMulti), len(multi))
@@ -82,7 +82,7 @@ func TestTruncatePrompt(t *testing.T) {
 }
 
 func TestTruncatePromptUTF8Boundary(t *testing.T) {
-	// 每个中文字符 3 字节，maxBytes=100 会落在 '你' 中间
+	// each character is 3 bytes in UTF-8, so maxBytes=100 lands in the middle of a character
 	s := strings.Repeat("你", 100)
 	got := TruncatePrompt(s, 100)
 	if !utf8.ValidString(got) {

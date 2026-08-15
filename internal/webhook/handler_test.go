@@ -17,27 +17,27 @@ func TestVerifySignature(t *testing.T) {
 	h := New("test-secret", nil)
 	body := []byte(`{"action":"opened"}`)
 
-	// 正确签名通过
+	// correct signature passes
 	if !h.verifySignature(body, sign(body, "test-secret")) {
 		t.Error("correct signature should pass")
 	}
 
-	// 错误签名拒绝
+	// wrong signature rejected
 	if h.verifySignature(body, sign(body, "wrong-secret")) {
 		t.Error("wrong signature should fail")
 	}
 
-	// 空 header 拒绝（有 secret 时）
+	// empty header rejected (when secret is set)
 	if h.verifySignature(body, "") {
 		t.Error("empty signature header should fail when secret is set")
 	}
 
-	// 缺 prefix 拒绝
+	// missing prefix rejected
 	if h.verifySignature(body, hex.EncodeToString([]byte("abc"))) {
 		t.Error("missing sha256= prefix should fail")
 	}
 
-	// 无 secret 时（开发环境）跳过验证
+	// no secret (dev environment) skips verification
 	noSecret := New("", nil)
 	if !noSecret.verifySignature(body, "") {
 		t.Error("empty secret should skip verification (pass)")

@@ -12,12 +12,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// mockRunClient 实现 agentv1.CognitionService_RunClient
-// （即 grpc.ServerStreamingClient[Event]），用于测试流解析逻辑。
+// mockRunClient implements agentv1.CognitionService_RunClient
+// (i.e. grpc.ServerStreamingClient[Event]), used to test stream parsing logic.
 type mockRunClient struct {
 	events []*agentv1.Event
 	idx    int
-	err    error // idx 超出 events 后返回该错误；nil 表示 io.EOF
+	err    error // returned once idx exceeds events; nil means io.EOF
 }
 
 func (m *mockRunClient) Recv() (*agentv1.Event, error) {
@@ -128,7 +128,7 @@ func TestIsRetryable(t *testing.T) {
 		}
 	}
 
-	// 非 gRPC 错误不可重试
+	// non-gRPC errors are not retryable
 	if isRetryable(errors.New("plain error")) {
 		t.Error("expected non-gRPC error to be non-retryable")
 	}

@@ -26,8 +26,8 @@ class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div style={{ padding: '2rem', textAlign: 'center' }}>
-          <h2>页面渲染出错</h2>
-          <p>请刷新页面重试。如果问题持续，请检查后端服务是否正常。</p>
+          <h2>Something went wrong rendering this page</h2>
+          <p>Please refresh the page to retry. If the problem persists, check that the backend service is running.</p>
           <button
             onClick={() => window.location.reload()}
             style={{
@@ -39,7 +39,7 @@ class ErrorBoundary extends Component<Props, State> {
               background: '#f5f5f5',
             }}
           >
-            刷新页面
+            Refresh page
           </button>
         </div>
       );

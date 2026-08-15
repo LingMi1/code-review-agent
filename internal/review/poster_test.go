@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseResult(t *testing.T) {
-	// 1. 直接 JSON
+	// 1. direct JSON
 	direct := `{"summary":"ok","issues":[{"file":"a.go","line":1,"severity":"high","category":"bug","title":"t","description":"d","suggestion":"s"}]}`
 	out, err := parseResult(direct)
 	if err != nil {
@@ -16,7 +16,7 @@ func TestParseResult(t *testing.T) {
 		t.Errorf("parseResult(direct) = %+v, want summary=ok 1 issue", out)
 	}
 
-	// 2. 从 ```json 代码块提取
+	// 2. extract from a ```json code block
 	block := "here is my review:\n```json\n" + direct + "\n```\nthanks"
 	out2, err := parseResult(block)
 	if err != nil {
@@ -26,26 +26,26 @@ func TestParseResult(t *testing.T) {
 		t.Errorf("parseResult(block) summary = %q, want ok", out2.Summary)
 	}
 
-	// 3. 无法解析 → error
+	// 3. unparseable → error
 	if _, err := parseResult("not json at all"); err == nil {
 		t.Error("parseResult(garbage) should error")
 	}
 }
 
 func TestExtractJSONBlock(t *testing.T) {
-	// ```json 标记
+	// ```json marker
 	got := extractJSONBlock("```json\n{\"a\":1}\n```")
 	if strings.TrimSpace(got) != "{\"a\":1}" {
 		t.Errorf("extractJSONBlock(json) = %q, want {\"a\":1}", got)
 	}
 
-	// 前面有正文，仍应正确定位 ```json 块
+	// preamble text should still locate the ```json block correctly
 	got2 := extractJSONBlock("here is my review:\n```json\n{\"a\":1}\n```\nthanks")
 	if strings.TrimSpace(got2) != "{\"a\":1}" {
 		t.Errorf("extractJSONBlock(with preamble) = %q, want {\"a\":1}", got2)
 	}
 
-	// 无标记 → 空
+	// no marker → empty
 	if got := extractJSONBlock("no block here"); got != "" {
 		t.Errorf("extractJSONBlock(no block) = %q, want empty", got)
 	}
@@ -54,8 +54,8 @@ func TestExtractJSONBlock(t *testing.T) {
 func TestBuildInlineComments(t *testing.T) {
 	issues := []Issue{
 		{File: "a.go", Line: 5, Severity: "high", Category: "bug", Title: "nil deref", Description: "x", Suggestion: "fix"},
-		{File: "", Line: 3, Severity: "high", Category: "bug", Title: "no file", Description: "skip me", Suggestion: "fix"}, // 应被跳过
-		{File: "b.go", Line: 0, Severity: "low", Category: "style", Title: "no line", Description: "skip me", Suggestion: "fix"}, // 应被跳过
+		{File: "", Line: 3, Severity: "high", Category: "bug", Title: "no file", Description: "skip me", Suggestion: "fix"}, // should be skipped
+		{File: "b.go", Line: 0, Severity: "low", Category: "style", Title: "no line", Description: "skip me", Suggestion: "fix"}, // should be skipped
 	}
 	comments := buildInlineComments(issues)
 	if len(comments) != 1 {

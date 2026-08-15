@@ -101,7 +101,7 @@ func TestEvaluateCaseFalsePositive(t *testing.T) {
 	}
 	found := []FoundIssue{
 		{File: "a.go", Line: 10, Category: "bug"},   // TP
-		{File: "a.go", Line: 50, Category: "style"}, // FP（行号与分类都不匹配）
+		{File: "a.go", Line: 50, Category: "style"}, // FP (line and category both mismatch)
 	}
 
 	r := evaluateCase(EvalCase{ID: "case-x", Name: "x", Category: "bug"}, exp, found)
@@ -118,7 +118,7 @@ func TestEvaluateCaseFalsePositive(t *testing.T) {
 }
 
 func TestEvaluateCaseNegative(t *testing.T) {
-	// 负例：期望 0 个 issue，审查器正确返回空 → 应判为通过（F1=1），而非 F1=0 误判失败。
+	// Negative case: expected 0 issues; the reviewer correctly returns empty → should pass (F1=1), not misjudge as failed with F1=0.
 	exp := ExpectedResult{CaseID: "case-neg", Issues: []ExpectedIssue{}}
 
 	clean := evaluateCase(EvalCase{ID: "case-neg", Name: "clean", Category: "bug"}, exp, nil)
@@ -127,7 +127,7 @@ func TestEvaluateCaseNegative(t *testing.T) {
 			clean.Precision, clean.Recall, clean.F1, clean.Passed)
 	}
 
-	// 负例但审查器误报 → 应判为失败（F1=0），并计入 FalsePositives。
+	// Negative case but the reviewer reports a false positive → should fail (F1=0) and count toward FalsePositives.
 	fp := evaluateCase(EvalCase{ID: "case-neg", Name: "clean", Category: "bug"}, exp,
 		[]FoundIssue{{File: "a.go", Line: 1, Category: "style"}})
 	if fp.Passed || fp.F1 != 0.0 || fp.FalsePositives != 1 {

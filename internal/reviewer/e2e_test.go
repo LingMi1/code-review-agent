@@ -16,8 +16,8 @@ import (
 	"github.com/LingMi1/code-review-agent/internal/webhook"
 )
 
-// TestWebhookToPostE2E 覆盖完整链路：webhook → 拉 diff → 分块 → 认知面(mock) → 投递。
-// 它把 main.go 里的 onPR 适配逻辑（event → owner/repo/pr）复刻进来，验证最终能产出 review。
+// TestWebhookToPostE2E covers the full pipeline: webhook → fetch diff → chunk → cognition (mock) → post.
+// It replicates the onPR adaptation logic from main.go (event → owner/repo/pr) to verify a review is produced end-to-end.
 func TestWebhookToPostE2E(t *testing.T) {
 	st := &mockStore{insertID: 42}
 	gh := &mockGitHub{diff: sampleDiff}
@@ -44,7 +44,7 @@ func TestWebhookToPostE2E(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	wh.ServeHTTP(rec, req)
-	wh.Wait() // 等待异步 review goroutine 完成
+	wh.Wait() // wait for the async review goroutine to finish
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("webhook status = %d, want 200", rec.Code)

@@ -13,7 +13,7 @@ func TestSubscribeMultipleSubscribers(t *testing.T) {
 
 	h.Publish("s1", Event{Type: "review.started", Data: "{}"})
 
-	// 两个订阅者都应收到事件
+	// both subscribers should receive the event
 	for name, ch := range map[string]<-chan Event{"subscriber 1": ch1, "subscriber 2": ch2} {
 		select {
 		case e := <-ch:
@@ -25,10 +25,10 @@ func TestSubscribeMultipleSubscribers(t *testing.T) {
 		}
 	}
 
-	// 取消订阅者 1 不应影响订阅者 2
+	// cancelling subscriber 1 should not affect subscriber 2
 	cancel1()
 
-	// ch1 应被关闭
+	// ch1 should be closed
 	if _, ok := <-ch1; ok {
 		t.Error("ch1 should be closed after cancel1")
 	}
@@ -50,12 +50,12 @@ func TestCancelIsIdempotent(t *testing.T) {
 	h := NewHub()
 	_, cancel := h.Subscribe("s1")
 	cancel()
-	cancel() // 不应 panic
+	cancel() // must not panic
 }
 
 func TestPublishUnknownSession(t *testing.T) {
 	h := NewHub()
-	h.Publish("does-not-exist", Event{Type: "x", Data: "{}"}) // 不应 panic
+	h.Publish("does-not-exist", Event{Type: "x", Data: "{}"}) // must not panic
 }
 
 func TestPublishDropsWhenChannelFull(t *testing.T) {
@@ -63,13 +63,13 @@ func TestPublishDropsWhenChannelFull(t *testing.T) {
 	ch, cancel := h.Subscribe("s1")
 	defer cancel()
 
-	// 填满 32 容量的 channel，再发一条应被丢弃（非阻塞，不 panic）
+	// fill the 32-capacity channel, then one more publish should be dropped (non-blocking, no panic)
 	for i := 0; i < 32; i++ {
 		h.Publish("s1", Event{Type: "review.progress", Data: i})
 	}
-	h.Publish("s1", Event{Type: "review.progress", Data: 33}) // 溢出，应被丢弃
+	h.Publish("s1", Event{Type: "review.progress", Data: 33}) // overflow, should be dropped
 
-	// 排空，确认没有阻塞且事件数量 <= 32
+	// drain, confirming no blocking and event count <= 32
 	n := 0
 	for {
 		select {

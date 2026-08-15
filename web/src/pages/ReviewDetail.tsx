@@ -50,7 +50,7 @@ export default function ReviewDetail() {
     if (!review) return;
     const session = `pr-review-${review.repo_url}/${review.pr_number}`;
     setSseActive(true);
-    // 保存关闭函数，供组件卸载或状态切换时清理，避免 EventSource 泄漏。
+    // Keep the close function so it can be cleaned up on unmount or state change, avoiding an EventSource leak.
     closeRef.current = subscribeSSE(
       session,
       (evt) => {

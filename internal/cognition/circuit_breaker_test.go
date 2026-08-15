@@ -40,7 +40,7 @@ func TestCircuitBreakerSuccessResets(t *testing.T) {
 	cb.onSuccess() // reset -> 0
 	cb.onFailure() // 1
 	cb.onFailure() // 2
-	// 若 reset 失效，累计已是 4 次失败，会触发熔断。
+	// If reset failed, the accumulated 4 failures would trip the breaker.
 	if !cb.allow() {
 		t.Fatal("expected breaker closed: success should reset failure count")
 	}

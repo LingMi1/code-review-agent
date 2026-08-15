@@ -60,18 +60,18 @@ func TestParse(t *testing.T) {
 }
 
 func TestChunkByBytes(t *testing.T) {
-	// 用 Hunk 的字节长度驱动分块（Hunk 无 @@ 边界时不可切分）。
+	// Chunking is driven by the Hunk's byte length (a Hunk without @@ boundaries cannot be split).
 	mk := func(name string, n int) FileDiff {
 		return FileDiff{FileName: name, Hunk: strings.Repeat("x", n), Lines: 1}
 	}
 	files := []FileDiff{
 		mk("a.go", 10),
 		mk("b.go", 10),
-		mk("c.go", 1000), // 大文件（单 hunk 无法切分 → 独立成块）
+		mk("c.go", 1000), // large file (single hunk cannot be split → becomes its own chunk)
 		mk("d.go", 10),
 	}
 
-	// maxBytes=100：a+b 一组(20 字节)，c 单独(1000)，d 一组(10)
+	// maxBytes=100: a+b together (20 bytes), c alone (1000), d alone (10)
 	chunks := ChunkByBytes(files, 100)
 	if len(chunks) != 3 {
 		t.Fatalf("ChunkByBytes() = %d chunks, want 3", len(chunks))
@@ -86,7 +86,7 @@ func TestChunkByBytes(t *testing.T) {
 		t.Errorf("chunks[2] = %+v, want single d.go", chunks[2])
 	}
 
-	// maxBytes<=0 应默认 28KB
+	// maxBytes<=0 should default to 28KB
 	if got := ChunkByBytes(files, 0); got == nil {
 		t.Error("ChunkByBytes(maxBytes=0) returned nil, want chunks")
 	}
@@ -156,7 +156,7 @@ func TestCalcPRSize(t *testing.T) {
 		t.Errorf("size.Ratio = %v, want %v", size.Ratio, 2.0/3.0)
 	}
 
-	// 空 allFiles 时 Ratio 应为 0
+	// empty allFiles should yield Ratio 0
 	empty := CalcPRSize(nil, filtered)
 	if empty.Ratio != 0 {
 		t.Errorf("CalcPRSize(nil) Ratio = %v, want 0", empty.Ratio)
@@ -170,14 +170,14 @@ func TestShouldUsePlanExecute(t *testing.T) {
 	if !ShouldUsePlanExecute(PRSize{Files: 10, Lines: 100}) {
 		t.Error("10 files should use plan-execute")
 	}
-	// 文件少但行数大：不应使用 plan-execute，否则整份 diff 会被 32KB prompt 截断。
+	// Few files but many lines: should NOT use plan-execute, otherwise the whole diff would be truncated by the 32KB prompt.
 	if ShouldUsePlanExecute(PRSize{Files: 1, Lines: 3000}) {
 		t.Error("1 file with 3000 lines should NOT use plan-execute")
 	}
 }
 
 func TestChunkByBytesSplitsLargeFile(t *testing.T) {
-	// 构造一个含 3 个 hunk 的单文件，强制在 hunk 边界切分。
+	// Build a single file with 3 hunks to force splitting at hunk boundaries.
 	var hunk strings.Builder
 	for h := 0; h < 3; h++ {
 		fmt.Fprintf(&hunk, "@@ -%d,5 +%d,5 @@\n", h*10+1, h*10+1)

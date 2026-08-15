@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// newTestClient 返回一个指向测试服务器 baseURL 的客户端。
+// newTestClient returns a client pointing at the test server's baseURL.
 func newTestClient(baseURL string) *Client {
 	c := New("test-token")
 	c.baseURL = baseURL
