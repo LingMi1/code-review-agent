@@ -152,8 +152,8 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 	files := diff.SkipGeneratedFiles(allFiles)
 	files = diff.SkipLockFiles(files)
 	files = diff.SkipDataFiles(files)
-	const maxChunkLines = 800
-	chunks := diff.ChunkBySize(files, maxChunkLines)
+	const maxChunkBytes = 28 * 1024
+	chunks := diff.ChunkByBytes(files, maxChunkBytes)
 	parseSpan.End()
 
 	if len(chunks) == 0 {
@@ -168,8 +168,8 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 	}
 
 	prSize := diff.CalcPRSize(allFiles, files)
-	// plan-execute 需要把整份 diff 塞进单 prompt（约 800 行），因此仅当
-	// "文件多且未分块"时真正生效；行数过大时走 chunked react 而非 plan-execute。
+	// plan-execute 需要把整份 diff 塞进单 prompt（约 28KB），因此仅当
+	// "文件多且未分块"时真正生效；体积过大时走 chunked react 而非 plan-execute。
 	usePlanExecute := diff.ShouldUsePlanExecute(prSize) && len(chunks) == 1
 
 	// 模型路由：由 agent-go 的角色分层路由实现（本仓库不直接选择模型）。
@@ -242,6 +242,9 @@ func (s *Service) Review(ctx context.Context, owner, repoName string, prNumber i
 			reviewPrompt = prompt.BuildReviewPrompt(prTitle, files)
 		}
 		const maxPromptBytes = 32_000
+		if len(reviewPrompt) > maxPromptBytes {
+			slog.WarnContext(ctx, "prompt exceeds byte cap, truncating", "pr", prNumber, "prompt_bytes", len(reviewPrompt))
+		}
 		reviewPrompt = prompt.TruncatePrompt(reviewPrompt, maxPromptBytes)
 
 		cognitionCtx, cognitionSpan := otel.StartSpan(ctx, "cognition.run_review")
@@ -315,7 +318,11 @@ func (s *Service) reviewChunks(ctx context.Context, prTitle, sessionBase string,
 	var totalTextLen int
 	for i, chunk := range chunks {
 		chunkTitle := fmt.Sprintf("%s (part %d/%d)", prTitle, i+1, len(chunks))
-		chunkPrompt := prompt.TruncatePrompt(prompt.BuildReviewPrompt(chunkTitle, chunk), maxPromptBytes)
+		chunkPrompt := prompt.BuildReviewPrompt(chunkTitle, chunk)
+		if len(chunkPrompt) > maxPromptBytes {
+			slog.WarnContext(ctx, "chunk prompt exceeds byte cap, truncating", "chunk", i+1, "prompt_bytes", len(chunkPrompt))
+		}
+		chunkPrompt = prompt.TruncatePrompt(chunkPrompt, maxPromptBytes)
 
 		chunkCtx, span := otel.StartSpan(ctx, fmt.Sprintf("cognition.chunk_%d", i+1))
 		result, err := s.cog.RunReview(chunkCtx, cognition.ReviewRequest{
@@ -338,9 +345,6 @@ func (s *Service) reviewChunks(ctx context.Context, prTitle, sessionBase string,
 			return nil, totalDuration, totalTextLen, fmt.Errorf("chunk %d/%d: parse result: %w", i+1, len(chunks), perr)
 		}
 		outputs = append(outputs, out)
-	}
-	if len(outputs) == 0 {
-		return nil, totalDuration, totalTextLen, fmt.Errorf("no chunk produced structured output")
 	}
 	return review.MergeOutputs(outputs), totalDuration, totalTextLen, nil
 }

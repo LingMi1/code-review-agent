@@ -9,7 +9,7 @@ import (
 type FileDiff struct {
 	FileName string
 	Hunk     string // 完整的 unified diff hunk（含 @@ header）
-	Lines    int    // 估算行数（新增 + 删除 + 上下文行数）
+	Lines    int    // 估算行数（hunk 总行数，含 meta 行与上下文）
 }
 
 // Parse 解析 unified diff 并按文件分组。
@@ -65,31 +65,31 @@ func parseFileName(line string) string {
 	return line
 }
 
-// ChunkBySize 将文件 diff 按最大行数分块。
-// 单个文件超过 maxLines 行时，在 @@ hunk 边界处切分，尽量保证每块 ≤ maxLines 行。
-func ChunkBySize(files []FileDiff, maxLines int) [][]FileDiff {
-	if maxLines <= 0 {
-		maxLines = 500
+// ChunkByBytes 将文件 diff 按字节数分块，确保每块的 Hunk 总字节数 ≤ maxBytes。
+// 单个文件超过 maxBytes 字节时，在 @@ hunk 边界处切分；单个超长 hunk 无法切分时保持原样。
+func ChunkByBytes(files []FileDiff, maxBytes int) [][]FileDiff {
+	if maxBytes <= 0 {
+		maxBytes = 28 * 1024
 	}
 
-	// 先展开：把超过 maxLines 行的大文件在 hunk 边界处切分。
+	// 先展开：把超过 maxBytes 字节的大文件在 hunk 边界处切分。
 	var expanded []FileDiff
 	for _, f := range files {
-		expanded = append(expanded, splitLargeFile(f, maxLines)...)
+		expanded = append(expanded, splitLargeFileByBytes(f, maxBytes)...)
 	}
 
 	// 再贪心分组。
 	var chunks [][]FileDiff
 	var currentChunk []FileDiff
-	currentLines := 0
+	currentBytes := 0
 	for _, f := range expanded {
-		if currentLines+f.Lines > maxLines && len(currentChunk) > 0 {
+		if currentBytes+len(f.Hunk) > maxBytes && len(currentChunk) > 0 {
 			chunks = append(chunks, currentChunk)
 			currentChunk = nil
-			currentLines = 0
+			currentBytes = 0
 		}
 		currentChunk = append(currentChunk, f)
-		currentLines += f.Lines
+		currentBytes += len(f.Hunk)
 	}
 
 	if len(currentChunk) > 0 {
@@ -99,35 +99,40 @@ func ChunkBySize(files []FileDiff, maxLines int) [][]FileDiff {
 	return chunks
 }
 
-// splitLargeFile 将超过 maxLines 行的单个文件在 @@ hunk 边界处切分为多个 FileDiff。
+// splitLargeFileByBytes 将超过 maxBytes 字节的单个文件在 @@ hunk 边界处切分为多个 FileDiff。
 // 若无法切分（无 hunk 边界、空 Hunk 或单个超长 hunk），保持原样返回。
-func splitLargeFile(f FileDiff, maxLines int) []FileDiff {
-	if f.Lines <= maxLines || f.Hunk == "" {
+func splitLargeFileByBytes(f FileDiff, maxBytes int) []FileDiff {
+	if len(f.Hunk) <= maxBytes || f.Hunk == "" {
 		return []FileDiff{f}
 	}
 
 	lines := strings.Split(f.Hunk, "\n")
 	var parts []FileDiff
 	var cur strings.Builder
-	curLines := 0
+	curBytes := 0
 
 	for _, line := range lines {
-		if strings.HasPrefix(line, "@@") && curLines > 0 {
-			parts = append(parts, FileDiff{FileName: f.FileName, Hunk: cur.String(), Lines: curLines})
+		if strings.HasPrefix(line, "@@") && curBytes > 0 {
+			parts = append(parts, newFileDiff(f.FileName, cur.String()))
 			cur.Reset()
-			curLines = 0
+			curBytes = 0
 		}
 		cur.WriteString(line + "\n")
-		curLines++
+		curBytes += len(line) + 1
 	}
-	if curLines > 0 {
-		parts = append(parts, FileDiff{FileName: f.FileName, Hunk: cur.String(), Lines: curLines})
+	if curBytes > 0 {
+		parts = append(parts, newFileDiff(f.FileName, cur.String()))
 	}
 
 	if len(parts) <= 1 {
 		return []FileDiff{f}
 	}
 	return parts
+}
+
+// newFileDiff 由 hunk 内容构造 FileDiff，Lines 按换行符计数估算。
+func newFileDiff(name, hunk string) FileDiff {
+	return FileDiff{FileName: name, Hunk: hunk, Lines: strings.Count(hunk, "\n")}
 }
 
 // SkipGeneratedFiles 过滤掉生成文件（lock 文件、generated 标记、binary 文件等）。
@@ -199,8 +204,8 @@ func CalcPRSize(allFiles, filtered []FileDiff) PRSize {
 }
 
 // ShouldUsePlanExecute 判断 PR 复杂度是否值得用 Plan-Execute 模式（10+ 个有效文件）。
-// 注意：能否真正使用还取决于 diff 能否塞进单 prompt（约 800 行）。
-// 行数过大的 PR 应走 chunked react 而非 plan-execute，否则 prompt 会被截断。
+// 注意：能否真正使用还取决于 diff 能否塞进单 prompt（约 28KB）。
+// 体积过大的 PR 应走 chunked react 而非 plan-execute，否则 prompt 会被截断。
 func ShouldUsePlanExecute(size PRSize) bool {
 	return size.Files >= 10
 }

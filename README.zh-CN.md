@@ -53,7 +53,7 @@ GitHub PR webhook / 手动触发
 
 - **真实 PR 处理**：处理 `opened`、`synchronize`、`reopened` 三类 PR 事件
 - **HMAC-SHA256 Webhook 验签**：防止伪造请求
-- **Diff 分块**：大 PR 按文件拆成约 800 行的块（大文件会在 hunk 边界进一步切分），逐块独立审查后合并
+- **Diff 分块**：大 PR 按文件拆成约 28KB 的块（大文件会在 hunk 边界进一步切分），逐块独立审查后合并
 - **结构化 JSON 输出**：LLM 返回可被程序解析的审查结果（文件/行号/严重级/类别/建议）
 - **优雅降级**：单次审查在 JSON 解析失败时回退为纯文本评论
 - **GitHub API 限流处理**：遵循 `Retry-After` 响应头自动重试
@@ -65,7 +65,7 @@ GitHub PR webhook / 手动触发
 ### 成本控制
 
 - **模型路由**：`react` 模式 → agent-go `executor` 角色（默认 DeepSeek，便宜）；`plan_execute` 模式 → agent-go `planner` 角色（由 agent-go 通过其自身的 `COGNITION_PLANNER_MODEL` 选择更强模型）
-- **Prompt 截断**：prompt 上限 32000 字节（约 31 KB）；超长 diff 通过约 800 行分块而非静默丢弃代码来适配上下文
+- **Prompt 截断**：prompt 上限 32000 字节（约 31 KB）；超长 diff 通过约 28KB 分块而非静默丢弃代码来适配上下文
 
 ### 多 Agent（Plan-Execute）
 

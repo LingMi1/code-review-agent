@@ -59,18 +59,22 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestChunkBySize(t *testing.T) {
+func TestChunkByBytes(t *testing.T) {
+	// 用 Hunk 的字节长度驱动分块（Hunk 无 @@ 边界时不可切分）。
+	mk := func(name string, n int) FileDiff {
+		return FileDiff{FileName: name, Hunk: strings.Repeat("x", n), Lines: 1}
+	}
 	files := []FileDiff{
-		{FileName: "a.go", Lines: 10},
-		{FileName: "b.go", Lines: 10},
-		{FileName: "c.go", Lines: 1000}, // 大文件
-		{FileName: "d.go", Lines: 10},
+		mk("a.go", 10),
+		mk("b.go", 10),
+		mk("c.go", 1000), // 大文件（单 hunk 无法切分 → 独立成块）
+		mk("d.go", 10),
 	}
 
-	// maxLines=100：a+b 一组(20)，c 单独(1000)，d 一组(10)
-	chunks := ChunkBySize(files, 100)
+	// maxBytes=100：a+b 一组(20 字节)，c 单独(1000)，d 一组(10)
+	chunks := ChunkByBytes(files, 100)
 	if len(chunks) != 3 {
-		t.Fatalf("ChunkBySize() = %d chunks, want 3", len(chunks))
+		t.Fatalf("ChunkByBytes() = %d chunks, want 3", len(chunks))
 	}
 	if len(chunks[0]) != 2 {
 		t.Errorf("chunks[0] len = %d, want 2", len(chunks[0]))
@@ -82,9 +86,9 @@ func TestChunkBySize(t *testing.T) {
 		t.Errorf("chunks[2] = %+v, want single d.go", chunks[2])
 	}
 
-	// maxLines<=0 应默认 500
-	if got := ChunkBySize(files, 0); got == nil {
-		t.Error("ChunkBySize(maxLines=0) returned nil, want chunks")
+	// maxBytes<=0 应默认 28KB
+	if got := ChunkByBytes(files, 0); got == nil {
+		t.Error("ChunkByBytes(maxBytes=0) returned nil, want chunks")
 	}
 }
 
@@ -172,7 +176,7 @@ func TestShouldUsePlanExecute(t *testing.T) {
 	}
 }
 
-func TestChunkBySizeSplitsLargeFile(t *testing.T) {
+func TestChunkByBytesSplitsLargeFile(t *testing.T) {
 	// 构造一个含 3 个 hunk 的单文件，强制在 hunk 边界切分。
 	var hunk strings.Builder
 	for h := 0; h < 3; h++ {
@@ -183,7 +187,7 @@ func TestChunkBySizeSplitsLargeFile(t *testing.T) {
 	}
 	f := FileDiff{FileName: "big.go", Hunk: hunk.String(), Lines: 18}
 
-	chunks := ChunkBySize([]FileDiff{f}, 6)
+	chunks := ChunkByBytes([]FileDiff{f}, 60)
 	if len(chunks) < 2 {
 		t.Fatalf("expected large file to be split into multiple chunks, got %d", len(chunks))
 	}

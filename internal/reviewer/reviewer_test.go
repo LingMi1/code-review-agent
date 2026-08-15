@@ -220,22 +220,23 @@ func TestReviewChunked(t *testing.T) {
 	if cog.calls != 2 {
 		t.Fatalf("expected 2 chunked cognition calls, got %d", cog.calls)
 	}
-	if st.lastIssues != 2 {
-		t.Fatalf("expected 2 merged issues, got %d", st.lastIssues)
+	// 两块都返回同一条 issue（file:line:category 相同），MergeOutputs 会去重为 1 条。
+	if st.lastIssues != 1 {
+		t.Fatalf("expected 1 deduped issue, got %d", st.lastIssues)
 	}
 	if !gh.posted {
 		t.Fatal("expected merged review to be posted to GitHub")
 	}
 }
 
-// largeDiff 生成一个跨 2 个文件、总行数 > 800 的 diff，触发 ChunkBySize 拆成 2 块。
+// largeDiff 生成一个跨 2 个文件、总字节数 > 28KB 的 diff，触发 ChunkByBytes 拆成 2 块。
 func largeDiff() string {
 	var b strings.Builder
 	for i := 0; i < 2; i++ {
 		fmt.Fprintf(&b, "diff --git a/file%d.go b/file%d.go\n", i, i)
 		fmt.Fprintf(&b, "index 0000000..1111111 100644\n--- a/file%d.go\n+++ b/file%d.go\n", i, i)
-		b.WriteString("@@ -1,250 +1,250 @@\n")
-		for j := 0; j < 250; j++ {
+		b.WriteString("@@ -1,800 +1,800 @@\n")
+		for j := 0; j < 800; j++ {
 			fmt.Fprintf(&b, "-old line %d\n+new line %d\n", j, j)
 		}
 	}

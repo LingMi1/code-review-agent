@@ -43,7 +43,7 @@ webhook event
   └─▶ extract owner/repo/pr/head_sha
         └─▶ fetch unified diff (GitHub)
               └─▶ parse into []FileDiff
-                    └─▶ if total lines > threshold: split into chunks (800 lines)
+                    └─▶ if total bytes > threshold: split into chunks (~28KB)
                           └─▶ for each chunk: call cognition
                                 └─▶ parse JSON output
                                       └─▶ merge all chunks into one ReviewOutput
@@ -58,7 +58,7 @@ so the dashboard reflects real state.
 ### 1. Chunked review vs single-pass
 
 Large PRs exceed the LLM context window. Instead of truncating (which silently
-drops code), the diff is split into ~800-line chunks and reviewed independently.
+drops code), the diff is split into ~28KB chunks and reviewed independently.
 
 - **Trade-off**: chunking loses *cross-file* context (a bug that spans two chunks
   may be missed or reported twice). Accepted because correctness within a chunk
@@ -71,7 +71,7 @@ selection. code-review-agent maps two strategies onto those roles:
 
 - `react` (small PR) → `executor` role → cheap/fast model (deepseek)
 - `plan_execute` (10+ files that fit in one prompt) → `planner` role → strong model
-- `react` chunked (oversized diff) → `executor` role, split into ~800-line chunks
+- `react` chunked (oversized diff) → `executor` role, split into ~28KB chunks
 
 This gives cost/quality control without forking the LLM stack.
 

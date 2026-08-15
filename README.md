@@ -53,7 +53,7 @@ GitHub PR webhook / manual trigger
 
 - **Real PR Processing**: Handles `opened`, `synchronize`, and `reopened` PR events
 - **HMAC-SHA256 Webhook Verification**: Prevents forged requests
-- **Diff Chunking**: Large PRs split by file into ~800-line chunks (large files split at hunk boundaries), reviewed independently and merged
+- **Diff Chunking**: Large PRs split by file into ~28KB chunks (large files split at hunk boundaries), reviewed independently and merged
 - **Structured JSON Output**: LLM returns machine-parseable review with file/line/severity/category/suggestion
 - **Graceful Degradation**: Single-shot reviews fall back to a plain-text comment when JSON parsing fails
 - **GitHub API Rate Limit Handling**: Respects `Retry-After` headers with automatic retry
@@ -65,7 +65,7 @@ GitHub PR webhook / manual trigger
 ### Cost Control
 
 - **Model Routing**: `react` mode → agent-go `executor` role (default DeepSeek, cheap); `plan_execute` mode → agent-go `planner` role (agent-go selects a stronger model via its own `COGNITION_PLANNER_MODEL`)
-- **Prompt Truncation**: Prompts capped at 32000 bytes (~31 KB); oversized diffs are split into ~800-line chunks instead of silently dropping code
+- **Prompt Truncation**: Prompts capped at 32000 bytes (~31 KB); oversized diffs are split into ~28KB chunks instead of silently dropping code
 
 ### Multi-Agent (Plan-Execute)
 

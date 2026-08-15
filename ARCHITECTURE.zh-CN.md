@@ -39,7 +39,7 @@ webhook 事件
   └─▶ 提取 owner/repo/pr/head_sha
         └─▶ 拉取 unified diff（GitHub）
               └─▶ 解析为 []FileDiff
-                    └─▶ 若总行数超过阈值：切分成多个 chunk（800 行）
+                    └─▶ 若总字节数超过阈值：切分成多个 chunk（约 28KB）
                           └─▶ 逐块调用认知面
                                 └─▶ 解析 JSON 输出
                                       └─▶ 合并所有 chunk 为一个 ReviewOutput
@@ -52,7 +52,7 @@ webhook 事件
 
 ### 1. 分块审查，而不是整段一次过
 
-大 PR 会超出 LLM 的上下文窗口。与其直接截断（会静默丢掉代码），不如把 diff 切成约 800 行一块，逐块独立审查。
+大 PR 会超出 LLM 的上下文窗口。与其直接截断（会静默丢掉代码），不如把 diff 切成约 28KB 一块，逐块独立审查。
 
 - **取舍**：分块会丢掉跨文件的上下文（跨两块才成立的 bug 可能被漏掉，或被重复报）。能接受，是因为块内正确性比全局视角更重要，而且 GitHub 评论本来就是按行定位的。
 
@@ -62,7 +62,7 @@ agent-go 认知面是按**角色**而不是按请求来路由模型的。code-re
 
 - `react`（小 PR）→ `executor` 角色 → 便宜、快的模型（deepseek）
 - `plan_execute`（10+ 文件且能塞进单条 prompt）→ `planner` 角色 → 更强的模型
-- `react` 分块（diff 过大）→ `executor` 角色，切成约 800 行一块
+- `react` 分块（diff 过大）→ `executor` 角色，切成约 28KB 一块
 
 这样不用自己复刻一套 LLM 技术栈，就能在成本和效果之间做选择。
 
