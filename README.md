@@ -14,7 +14,7 @@ An AI code review tool that catches bugs, security holes, and performance proble
 
 | Review Dashboard | Review Detail |
 |---|---|
-| ![Review list](assets/review-list.png) | ![Review detail](assets/review-detail.png) |
+| <img src="assets/review-list.png" width="480" alt="Review list" /> | <img src="assets/review-detail.png" width="480" alt="Review detail" /> |
 
 ## How It Works
 

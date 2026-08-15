@@ -14,7 +14,7 @@
 
 | 审查列表 | 审查详情 |
 |---|---|
-| ![审查列表](assets/review-list.png) | ![审查详情](assets/review-detail.png) |
+| <img src="assets/review-list.png" width="480" alt="审查列表" /> | <img src="assets/review-detail.png" width="480" alt="审查详情" /> |
 
 ## 工作原理
 
