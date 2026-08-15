@@ -1,0 +1,7 @@
+{
+  "id": "case-029",
+  "name": "Multi-file — file upload + parser",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/upload_handler.go b/upload_handler.go\nnew file mode 100644\n--- /dev/null\n+++ b/upload_handler.go\n@@ -0,0 +1,17 @@\n+package main\n+\n+import (\n+\t\"io\"\n+\t\"net/http\"\n+\t\"os\"\n+\t\"path/filepath\"\n+)\n+\n+func upload(w http.ResponseWriter, r *http.Request) {\n+\tname := r.URL.Query().Get(\"name\")\n+\tpath := filepath.Join(\"/uploads\", name)\n+\tdata, _ := io.ReadAll(r.Body)\n+\tf, _ := os.Create(path)\n+\tf.Write(data)\n+\tf.Close()\n+}\ndiff --git a/parser.go b/parser.go\nnew file mode 100644\n--- /dev/null\n+++ b/parser.go\n@@ -0,0 +1,13 @@\n+package main\n+\n+import (\n+\t\"fmt\"\n+\t\"strconv\"\n+)\n+\n+func parse(s string) int {\n+\tn, _ := strconv.Atoi(s)\n+\tvalue := 100 / n\n+\tfmt.Printf(\"parsed %d\\n\", value)\n+\treturn value\n+}\n"
+}

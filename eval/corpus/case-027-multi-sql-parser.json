@@ -1,0 +1,7 @@
+{
+  "id": "case-027",
+  "name": "Multi-file — SQL injection + parser",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/user_handler.go b/user_handler.go\nnew file mode 100644\n--- /dev/null\n+++ b/user_handler.go\n@@ -40,0 +42,7 @@\n+\n+func getUser(db *sql.DB, name string) (*User, error) {\n+\tquery := \"SELECT * FROM users WHERE name = '\" + name + \"'\"\n+\trow := db.QueryRow(query)\n+\tvar u User\n+\terr := row.Scan(&u.ID, &u.Name, &u.Email)\n+\treturn &u, err\n+}\ndiff --git a/parser.go b/parser.go\nnew file mode 100644\n--- /dev/null\n+++ b/parser.go\n@@ -0,0 +1,13 @@\n+package main\n+\n+import (\n+\t\"fmt\"\n+\t\"strconv\"\n+)\n+\n+func parse(s string) int {\n+\tn, _ := strconv.Atoi(s)\n+\tvalue := 100 / n\n+\tfmt.Printf(\"parsed %d\\n\", value)\n+\treturn value\n+}\n"
+}

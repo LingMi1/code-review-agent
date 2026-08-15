@@ -1,0 +1,30 @@
+{
+  "case_id": "case-027",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "user_handler.go",
+      "line_start": 42,
+      "line_end": 43,
+      "severity": "high",
+      "category": "security",
+      "title": "SQL injection vulnerability"
+    },
+    {
+      "file": "parser.go",
+      "line_start": 9,
+      "line_end": 9,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Error from strconv.Atoi ignored"
+    },
+    {
+      "file": "parser.go",
+      "line_start": 10,
+      "line_end": 10,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Division by zero when n is 0"
+    }
+  ]
+}

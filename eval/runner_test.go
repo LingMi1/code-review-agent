@@ -116,3 +116,22 @@ func TestEvaluateCaseFalsePositive(t *testing.T) {
 		t.Errorf("FalseNegatives = %d, want 0", r.FalseNegatives)
 	}
 }
+
+func TestEvaluateCaseNegative(t *testing.T) {
+	// 负例：期望 0 个 issue，审查器正确返回空 → 应判为通过（F1=1），而非 F1=0 误判失败。
+	exp := ExpectedResult{CaseID: "case-neg", Issues: []ExpectedIssue{}}
+
+	clean := evaluateCase(EvalCase{ID: "case-neg", Name: "clean", Category: "bug"}, exp, nil)
+	if !clean.Passed || clean.F1 != 1.0 || clean.Precision != 1.0 || clean.Recall != 1.0 {
+		t.Errorf("clean case = P/R/F1 %.2f/%.2f/%.2f passed=%v, want 1/1/1 true",
+			clean.Precision, clean.Recall, clean.F1, clean.Passed)
+	}
+
+	// 负例但审查器误报 → 应判为失败（F1=0），并计入 FalsePositives。
+	fp := evaluateCase(EvalCase{ID: "case-neg", Name: "clean", Category: "bug"}, exp,
+		[]FoundIssue{{File: "a.go", Line: 1, Category: "style"}})
+	if fp.Passed || fp.F1 != 0.0 || fp.FalsePositives != 1 {
+		t.Errorf("false-positive case = F1 %.2f FP=%d passed=%v, want F1=0 FP=1 passed=false",
+			fp.F1, fp.FalsePositives, fp.Passed)
+	}
+}

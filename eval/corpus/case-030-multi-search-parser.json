@@ -1,0 +1,7 @@
+{
+  "id": "case-030",
+  "name": "Multi-file — search handler + parser",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/search_handler.go b/search_handler.go\nnew file mode 100644\n--- /dev/null\n+++ b/search_handler.go\n@@ -0,0 +1,18 @@\n+package main\n+\n+import (\n+\t\"database/sql\"\n+\t\"fmt\"\n+\t\"net/http\"\n+)\n+\n+func search(w http.ResponseWriter, r *http.Request, db *sql.DB) {\n+\tkw := r.URL.Query().Get(\"q\")\n+\tq := \"SELECT * FROM items WHERE name LIKE '%\" + kw + \"%'\"\n+\tclient := &http.Client{}\n+\tresp, _ := client.Get(\"http://example.com/upstream?q=\" + kw)\n+\tlog := fmt.Sprintf(\"searching for %s\", kw)\n+\tfmt.Println(log)\n+\trows, err := db.Query(q)\n+\trows.Close()\n+}\ndiff --git a/parser.go b/parser.go\nnew file mode 100644\n--- /dev/null\n+++ b/parser.go\n@@ -0,0 +1,13 @@\n+package main\n+\n+import (\n+\t\"fmt\"\n+\t\"strconv\"\n+)\n+\n+func parse(s string) int {\n+\tn, _ := strconv.Atoi(s)\n+\tvalue := 100 / n\n+\tfmt.Printf(\"parsed %d\\n\", value)\n+\treturn value\n+}\n"
+}

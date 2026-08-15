@@ -1,0 +1,7 @@
+{
+  "id": "case-022",
+  "name": "Negative — HTTP client with timeout",
+  "category": "performance",
+  "language": "go",
+  "diff": "diff --git a/fetch.go b/fetch.go\nnew file mode 100644\n--- /dev/null\n+++ b/fetch.go\n@@ -0,0 +1,4 @@\n+func fetch(url string) (*http.Response, error) {\n+\tclient := &http.Client{Timeout: 10 * time.Second}\n+\treturn client.Get(url)\n+}\n"
+}

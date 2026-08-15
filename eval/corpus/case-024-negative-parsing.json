@@ -1,0 +1,7 @@
+{
+  "id": "case-024",
+  "name": "Negative — integer parsing with error check",
+  "category": "bug",
+  "language": "go",
+  "diff": "diff --git a/parser.go b/parser.go\nnew file mode 100644\n--- /dev/null\n+++ b/parser.go\n@@ -0,0 +1,5 @@\n+func parseValue(s string) (int, error) {\n+\tn, err := strconv.Atoi(s)\n+\tif err != nil {\n+\t\treturn 0, err\n+\t}\n+\treturn n * 2, nil\n+}\n"
+}

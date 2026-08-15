@@ -119,6 +119,26 @@ func evaluateCase(c EvalCase, exp ExpectedResult, found []FoundIssue) CaseResult
 		FoundCount:    len(found),
 	}
 
+	// 负例（无期望 issue）：正确输出是"一个都不报"。
+	// 否则 F1 会因 0/0 默认成 0，把"正确识别干净代码"误判为失败。
+	if len(exp.Issues) == 0 {
+		result.Recall = 1 // 没有可漏报的期望项
+		if len(found) == 0 {
+			result.Precision = 1
+			result.F1 = 1
+			result.Passed = true
+		} else {
+			for _, fi := range found {
+				result.UnmatchedIssues = append(result.UnmatchedIssues, fi)
+				result.FalsePositives++
+			}
+			result.Precision = 0
+			result.F1 = 0
+			result.Passed = false
+		}
+		return result
+	}
+
 	// 检查匹配
 	matchedExp := make([]bool, len(exp.Issues))
 	matchedFound := make([]bool, len(found))

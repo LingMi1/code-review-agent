@@ -1,0 +1,38 @@
+{
+  "case_id": "case-025",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "user_handler.go",
+      "line_start": 42,
+      "line_end": 43,
+      "severity": "high",
+      "category": "security",
+      "title": "SQL injection vulnerability"
+    },
+    {
+      "file": "upload_handler.go",
+      "line_start": 12,
+      "line_end": 12,
+      "severity": "high",
+      "category": "security",
+      "title": "Path traversal via unsanitized filename"
+    },
+    {
+      "file": "upload_handler.go",
+      "line_start": 13,
+      "line_end": 13,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Unbounded request body read without size limit"
+    },
+    {
+      "file": "upload_handler.go",
+      "line_start": 14,
+      "line_end": 15,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Error from os.Create ignored"
+    }
+  ]
+}

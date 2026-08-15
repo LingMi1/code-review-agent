@@ -47,7 +47,7 @@ go vet ./...
 
 ## Evaluation
 
-The eval suite measures recall against an 18-case labeled corpus. It runs in mock mode locally and in CI:
+The eval suite measures recall against a 30-case labeled corpus (including negative and multi-file cases). It runs in mock mode locally and in CI:
 
 ```bash
 go run ./cmd/eval/

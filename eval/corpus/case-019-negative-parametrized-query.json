@@ -1,0 +1,7 @@
+{
+  "id": "case-019",
+  "name": "Negative — parameterized query (no SQL injection)",
+  "category": "security",
+  "language": "go",
+  "diff": "diff --git a/user_handler.go b/user_handler.go\nnew file mode 100644\n--- /dev/null\n+++ b/user_handler.go\n@@ -0,0 +1,6 @@\n+func getUser(db *sql.DB, name string) (*User, error) {\n+\trow := db.QueryRow(\"SELECT id, name FROM users WHERE name = ?\", name)\n+\tvar u User\n+\tif err := row.Scan(&u.ID, &u.Name); err != nil {\n+\t\treturn nil, err\n+\t}\n+\treturn &u, nil\n+}\n"
+}

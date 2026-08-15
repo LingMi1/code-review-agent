@@ -1,0 +1,38 @@
+{
+  "case_id": "case-026",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "user_handler.go",
+      "line_start": 42,
+      "line_end": 43,
+      "severity": "high",
+      "category": "security",
+      "title": "SQL injection vulnerability"
+    },
+    {
+      "file": "search_handler.go",
+      "line_start": 11,
+      "line_end": 11,
+      "severity": "high",
+      "category": "security",
+      "title": "SQL injection in raw query"
+    },
+    {
+      "file": "search_handler.go",
+      "line_start": 12,
+      "line_end": 13,
+      "severity": "medium",
+      "category": "performance",
+      "title": "HTTP client without timeout"
+    },
+    {
+      "file": "search_handler.go",
+      "line_start": 16,
+      "line_end": 16,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Error from db.Query ignored"
+    }
+  ]
+}

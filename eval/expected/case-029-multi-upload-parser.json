@@ -1,0 +1,46 @@
+{
+  "case_id": "case-029",
+  "should_reject": true,
+  "issues": [
+    {
+      "file": "upload_handler.go",
+      "line_start": 12,
+      "line_end": 12,
+      "severity": "high",
+      "category": "security",
+      "title": "Path traversal via unsanitized filename"
+    },
+    {
+      "file": "upload_handler.go",
+      "line_start": 13,
+      "line_end": 13,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Unbounded request body read without size limit"
+    },
+    {
+      "file": "upload_handler.go",
+      "line_start": 14,
+      "line_end": 15,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Error from os.Create ignored"
+    },
+    {
+      "file": "parser.go",
+      "line_start": 9,
+      "line_end": 9,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Error from strconv.Atoi ignored"
+    },
+    {
+      "file": "parser.go",
+      "line_start": 10,
+      "line_end": 10,
+      "severity": "medium",
+      "category": "bug",
+      "title": "Division by zero when n is 0"
+    }
+  ]
+}
