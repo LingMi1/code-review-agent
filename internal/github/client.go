@@ -52,9 +52,14 @@ func (c *Client) PRDiff(ctx context.Context, owner, repo string, prNumber int) (
 		return "", fmt.Errorf("fetch PR diff: HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20)) // 5MB limit
+	const maxDiffBytes = 5 << 20 // 5MB
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxDiffBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("read PR diff: %w", err)
+	}
+	if len(data) > maxDiffBytes {
+		slog.Warn("github: PR diff exceeds 5MB limit, truncating", "limit_bytes", maxDiffBytes)
+		data = data[:maxDiffBytes]
 	}
 	return string(data), nil
 }

@@ -212,15 +212,13 @@ code-review-agent/
 This project consumes the agent-go cognition service via its public `CognitionService.Run` RPC (server-streaming):
 
 ```go
-// From internal/cognition/client.go
-stream, err := svc.Run(ctx, &agentv1.RunRequest{
-    RunId:     uuid.New().String(),
-    SessionId: fmt.Sprintf("pr-review-%d", prNumber),
+// internal/reviewer/reviewer.go wraps the CognitionService.Run RPC via RunReview
+result, err := client.RunReview(ctx, cognition.ReviewRequest{
+    SessionID: fmt.Sprintf("pr-review-%s-%d", repoName, prNumber),
     Query:     reviewPrompt,
-    AgentType: "react",   // or "plan_execute" for large PRs
+    AgentType: "react", // or "plan_execute" for large PRs
     MaxSteps:  5,
 })
-// Collect events...
 ```
 
 No LLM SDK and no tool definitions in this repo — agent-go handles the entire Agent loop. This repo only builds the review prompts it sends over gRPC.

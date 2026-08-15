@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -78,10 +79,12 @@ func main() {
 	}
 	defer cogClient.Close()
 
-	// 确保数据目录存在
-	if err := os.MkdirAll("data", 0o755); err != nil {
-		slog.Error("failed to create data dir", "error", err)
-		os.Exit(1)
+	// 确保 SQLite 数据目录存在（跟随可配置的 SQLITE_PATH，而非硬编码 "data"）。
+	if dir := filepath.Dir(cfg.SQLitePath); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			slog.Error("failed to create data dir", "dir", dir, "error", err)
+			os.Exit(1)
+		}
 	}
 
 	db, err := store.New(cfg.SQLitePath)
@@ -169,7 +172,9 @@ func main() {
 			go func() {
 				defer manualWG.Done()
 				ctx := context.WithoutCancel(r.Context())
-				reviewSvc.Review(ctx, req.Owner, req.Repo, req.PRNumber, "", reviewID)
+				if err := reviewSvc.Review(ctx, req.Owner, req.Repo, req.PRNumber, "", reviewID); err != nil {
+					slog.Error("manual review failed", "pr", req.PRNumber, "error", err)
+				}
 			}()
 			writeJSON(w, map[string]interface{}{
 				"review_id": reviewID,

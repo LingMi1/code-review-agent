@@ -79,6 +79,9 @@ paths:
                   $ref: '#/components/schemas/ReviewRecord'
     post:
       summary: Manually trigger a review
+      description: |
+        Authentication: `Authorization: Bearer <API_TOKEN>` or `X-API-Token: <API_TOKEN>`.
+        When API_TOKEN is unset (local development), authentication is skipped.
       security:
         - BearerAuth: []
       requestBody:

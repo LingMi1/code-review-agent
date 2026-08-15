@@ -212,15 +212,13 @@ code-review-agent/
 本项目通过 agent-go 认知面的公开 RPC `CognitionService.Run`（server-streaming）获取认知能力：
 
 ```go
-// 来自 internal/cognition/client.go
-stream, err := svc.Run(ctx, &agentv1.RunRequest{
-    RunId:     uuid.New().String(),
-    SessionId: fmt.Sprintf("pr-review-%d", prNumber),
+// internal/reviewer/reviewer.go 通过 RunReview 封装 CognitionService.Run RPC
+result, err := client.RunReview(ctx, cognition.ReviewRequest{
+    SessionID: fmt.Sprintf("pr-review-%s-%d", repoName, prNumber),
     Query:     reviewPrompt,
-    AgentType: "react",   // 大 PR 使用 "plan_execute"
+    AgentType: "react", // 大 PR 使用 "plan_execute"
     MaxSteps:  5,
 })
-// 收集事件...
 ```
 
 本仓库不含 LLM SDK 和工具定义——agent-go 负责整个 Agent 循环；本仓库只负责构造通过 gRPC 发送的审查 prompt。
