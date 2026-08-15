@@ -1,6 +1,7 @@
 version: "2"
 
-timeout: 3m
+run:
+  timeout: 3m
 
 linters:
   enable:
