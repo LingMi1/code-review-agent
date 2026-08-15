@@ -15,7 +15,7 @@ services:
   cognition:
     image: my-agent-cognition
     build:
-      context: ../agent-go/agent-go
+      context: ../agent-go
       dockerfile: deploy/Dockerfile.cognition
     container_name: cra-cognition
     environment:

@@ -115,7 +115,7 @@ PRs with 10+ files that still fit in a single prompt are reviewed in **plan-exec
 
 - Go 1.25+
 - Docker (for agent-go cognition)
-- The [agent-go](https://github.com/LingMi1/agent-go) repo cloned as a sibling directory (needed by `docker compose` to build the cognition image)
+- The [agent-go](https://github.com/LingMi1/agent-go) repo cloned as a sibling of this repo, i.e. at `../agent-go` (needed by `docker compose` to build the cognition image)
 - GitHub Personal Access Token with `repo` scope
 - LLM API key (DeepSeek or Anthropic)
 
@@ -123,6 +123,7 @@ PRs with 10+ files that still fit in a single prompt are reviewed in **plan-exec
 
 ```bash
 git clone https://github.com/LingMi1/code-review-agent.git
+git clone https://github.com/LingMi1/agent-go.git
 cd code-review-agent
 ```
 

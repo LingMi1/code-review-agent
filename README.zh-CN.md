@@ -115,7 +115,7 @@ GitHub PR webhook / 手动触发
 
 - Go 1.25+
 - Docker（用于 agent-go 认知面）
-- 把 [agent-go](https://github.com/LingMi1/agent-go) 仓库 clone 到同级目录（`docker compose` 构建认知面镜像需要）
+- 把 [agent-go](https://github.com/LingMi1/agent-go) 仓库 clone 到与本仓库同级的位置，即 `../agent-go`（`docker compose` 构建认知面镜像需要）
 - 具备 `repo` 权限的 GitHub Personal Access Token
 - LLM API key（DeepSeek 或 Anthropic）
 
@@ -123,6 +123,7 @@ GitHub PR webhook / 手动触发
 
 ```bash
 git clone https://github.com/LingMi1/code-review-agent.git
+git clone https://github.com/LingMi1/agent-go.git
 cd code-review-agent
 ```
 
