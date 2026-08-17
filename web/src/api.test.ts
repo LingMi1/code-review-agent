@@ -29,7 +29,7 @@ describe('fetchReviews', () => {
   it('parses a JSON array', async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [{ id: 1 }] });
     await expect(fetchReviews()).resolves.toEqual([{ id: 1 }]);
-    expect(mockFetch).toHaveBeenCalledWith('/api/reviews');
+    expect(mockFetch).toHaveBeenCalledWith('/api/reviews', { headers: {} });
   });
 
   it('throws on a non-ok response', async () => {

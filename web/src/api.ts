@@ -17,11 +17,18 @@ const TOKEN_KEY = 'cra.apiToken';
 
 // API token 运行时获取/设置：不再从构建期 VITE_API_TOKEN 内联进 bundle
 // （静态资源公开即 token 公开）。改为 sessionStorage，由操作者粘贴一次、会话内复用。
+// sessionStorage 是浏览器 API，Node/SSR 环境不存在，先判断避免 ReferenceError。
+function sessionStorageAvailable(): boolean {
+  return typeof sessionStorage !== 'undefined';
+}
+
 export function getApiToken(): string {
+  if (!sessionStorageAvailable()) return '';
   return sessionStorage.getItem(TOKEN_KEY) || '';
 }
 
 export function setApiToken(token: string): void {
+  if (!sessionStorageAvailable()) return;
   if (token) sessionStorage.setItem(TOKEN_KEY, token);
   else sessionStorage.removeItem(TOKEN_KEY);
 }
