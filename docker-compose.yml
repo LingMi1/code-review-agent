@@ -39,9 +39,11 @@ services:
     container_name: code-review-agent
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN:?GITHUB_TOKEN required}
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
-      API_TOKEN: ${API_TOKEN:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?WEBHOOK_SECRET required}
+      API_TOKEN: ${API_TOKEN:?API_TOKEN required}
       ALLOWED_OWNERS: ${ALLOWED_OWNERS:-LingMi1}
+      # 生产模式：Validate 对 WEBHOOK_SECRET/API_TOKEN/ALLOWED_OWNERS fail-closed（缺失即拒绝启动）
+      APP_ENV: production
       COGNITION_ADDR: cognition:50051
       LISTEN_ADDR: ":8080"
       SQLITE_PATH: /app/data/reviews.db

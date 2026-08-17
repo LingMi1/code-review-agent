@@ -21,6 +21,7 @@ type Config struct {
 	OtelEndpoint       string
 	OtelServiceName    string
 	TrustXForwardedFor bool
+	Env                string // APP_ENV；为 "production" 时 Validate 对弱配置 fail-closed
 }
 
 // Load 从环境变量读取配置。
@@ -37,6 +38,7 @@ func Load() *Config {
 		OtelEndpoint:       os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 		OtelServiceName:    envDefault("OTEL_SERVICE_NAME", "code-review-agent"),
 		TrustXForwardedFor: envBool("TRUST_X_FORWARDED_FOR", false),
+		Env:                os.Getenv("APP_ENV"),
 	}
 }
 
@@ -53,6 +55,19 @@ func (c *Config) Validate() error {
 	}
 	if len(c.AllowedOwners) == 0 {
 		slog.Warn("ALLOWED_OWNERS not set; bot will review ANY repository — only safe for local development")
+	}
+	// 生产环境 fail-closed：任何关键安全项缺失都直接拒绝启动，
+	// 避免“默认不安全”的配置被误部署到公网。
+	if c.Env == "production" {
+		if c.WebhookSecret == "" {
+			return fmt.Errorf("WEBHOOK_SECRET is required in production")
+		}
+		if c.APIToken == "" {
+			return fmt.Errorf("API_TOKEN is required in production")
+		}
+		if len(c.AllowedOwners) == 0 {
+			return fmt.Errorf("ALLOWED_OWNERS is required in production")
+		}
 	}
 	return nil
 }

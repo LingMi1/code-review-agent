@@ -10,7 +10,7 @@ import {
   X,
   Search,
 } from 'lucide-react';
-import { fetchReviews, triggerReview, ReviewRecord } from '../api';
+import { fetchReviews, triggerReview, getApiToken, setApiToken, ReviewRecord } from '../api';
 
 export default function ReviewList() {
   const [reviews, setReviews] = useState<ReviewRecord[]>([]);
@@ -23,6 +23,7 @@ export default function ReviewList() {
   const [prNumber, setPrNumber] = useState('');
   const [triggering, setTriggering] = useState(false);
   const [triggerMsg, setTriggerMsg] = useState<string | null>(null);
+  const [apiToken, setApiTokenState] = useState(getApiToken());
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +71,21 @@ export default function ReviewList() {
     }
   };
 
+  const saveToken = () => {
+    setApiToken(apiToken.trim());
+    setLoading(true);
+    setError(null);
+    fetchReviews()
+      .then((data) => {
+        setReviews(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+        setLoading(false);
+      });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -95,18 +111,37 @@ export default function ReviewList() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-end justify-between mb-6">
+      <div className="flex items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Code Review</h1>
           <p className="text-sm text-gray-500 mt-1">Automated PR reviews powered by agent-go cognition</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Review
-        </button>
+        <div className="flex items-end gap-2">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1.5">API Token</label>
+            <input
+              type="password"
+              placeholder="Set for prod auth"
+              value={apiToken}
+              onChange={(e) => setApiTokenState(e.target.value)}
+              className="w-44 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={saveToken}
+            className="px-3 py-2 text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+          >
+            Save
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Review
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

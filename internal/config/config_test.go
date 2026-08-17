@@ -66,6 +66,30 @@ func TestValidatePassesWithToken(t *testing.T) {
 	}
 }
 
+func TestValidateProductionRequiresSecrets(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_test")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("WEBHOOK_SECRET", "")
+	t.Setenv("API_TOKEN", "")
+	t.Setenv("ALLOWED_OWNERS", "")
+	cfg := Load()
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should fail-closed in production when WEBHOOK_SECRET/API_TOKEN/ALLOWED_OWNERS are empty")
+	}
+}
+
+func TestValidateProductionPasses(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_test")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("WEBHOOK_SECRET", "s3cret")
+	t.Setenv("API_TOKEN", "tok")
+	t.Setenv("ALLOWED_OWNERS", "LingMi1")
+	cfg := Load()
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() error = %v, want nil", err)
+	}
+}
+
 func TestParseOrigins(t *testing.T) {
 	got := parseOrigins("http://a.com, http://b.com ,, http://c.com")
 	if len(got) != 3 {

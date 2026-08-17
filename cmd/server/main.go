@@ -129,8 +129,46 @@ func main() {
 	}))
 	mux.Handle("/metrics", m) // Prometheus 指标端点
 
-	// SSE 端点：实时审查进度流
-	mux.Handle("/api/reviews/stream", sseHub)
+	// SSE 端点：实时审查进度流。EventSource 无法带 Authorization header，
+	// 故用绑定 session 的短时 HMAC token（query 参数）鉴权，见 /api/reviews/stream-token。
+	mux.Handle("/api/reviews/stream", sseAuth(cfg.APIToken, sseHub))
+
+	// 签发 SSE 短时 token（需 API token）：前端先用 Bearer 换取 token，再连接 EventSource。
+	mux.HandleFunc("/api/reviews/stream-token", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w, r, cfg.AllowedOrigins)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if !authorizeManualTrigger(r, cfg.APIToken) {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var req struct {
+			Session string `json:"session"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		if req.Session == "" {
+			writeError(w, http.StatusBadRequest, "session is required")
+			return
+		}
+		if cfg.APIToken == "" {
+			// 开发模式无鉴权，SSE 也无需 token。
+			writeJSON(w, map[string]string{"token": "", "expires_in": "60"})
+			return
+		}
+		writeJSON(w, map[string]string{
+			"token":      signStreamToken(cfg.APIToken, req.Session, 60*time.Second),
+			"expires_in": "60",
+		})
+	})
 
 	// 审查 API（带 CORS 响应头）
 	// GET  /api/reviews        → 列表
@@ -141,12 +179,13 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		// 读/写审查记录均需 API token（若已配置）：GET 列表会泄露 LLM 对私有仓库 diff 的分析，
+		// POST 会消耗 LLM/GitHub 配额。
+		if !authorizeManualTrigger(r, cfg.APIToken) {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		if r.Method == http.MethodPost {
-			// 手动触发审查：校验 API token（若已配置）
-			if !authorizeManualTrigger(r, cfg.APIToken) {
-				writeError(w, http.StatusUnauthorized, "unauthorized")
-				return
-			}
 			var req struct {
 				Owner    string `json:"owner"`
 				Repo     string `json:"repo"`
@@ -209,6 +248,11 @@ func main() {
 		enableCORS(w, r, cfg.AllowedOrigins)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// 单条审查记录含 summary/error 字段，同样要求 API token。
+		if !authorizeManualTrigger(r, cfg.APIToken) {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		if r.Method != http.MethodGet {
