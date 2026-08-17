@@ -77,3 +77,34 @@ func TestParseOrigins(t *testing.T) {
 		}
 	}
 }
+
+func TestParseOwners(t *testing.T) {
+	got := parseOwners("LingMi1, FOO, lingmi1 ,")
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if !got["lingmi1"] || !got["foo"] {
+		t.Errorf("got = %v, want lingmi1 and foo", got)
+	}
+}
+
+func TestAllowRepo(t *testing.T) {
+	cfg := &Config{AllowedOwners: parseOwners("LingMi1")}
+	for _, repo := range []string{"LingMi1/agent-go", "LingMi1/code-review-agent", "LINGMI1/x"} {
+		if !cfg.AllowRepo(repo) {
+			t.Errorf("AllowRepo(%q) = false, want true", repo)
+		}
+	}
+	for _, repo := range []string{"Other/agent-go", "lingmi1", "", "bad-format"} {
+		if cfg.AllowRepo(repo) {
+			t.Errorf("AllowRepo(%q) = true, want false", repo)
+		}
+	}
+}
+
+func TestAllowRepoEmptyAllowsAll(t *testing.T) {
+	cfg := &Config{AllowedOwners: map[string]bool{}}
+	if !cfg.AllowRepo("anyone/anything") {
+		t.Error("empty allowlist should allow all (dev mode)")
+	}
+}

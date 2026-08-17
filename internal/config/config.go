@@ -17,6 +17,7 @@ type Config struct {
 	ListenAddr         string
 	SQLitePath         string
 	AllowedOrigins     map[string]bool
+	AllowedOwners      map[string]bool
 	OtelEndpoint       string
 	OtelServiceName    string
 	TrustXForwardedFor bool
@@ -32,6 +33,7 @@ func Load() *Config {
 		ListenAddr:         envDefault("LISTEN_ADDR", ":8080"),
 		SQLitePath:         envDefault("SQLITE_PATH", "./data/reviews.db"),
 		AllowedOrigins:     parseOrigins(envDefault("ALLOWED_ORIGINS", "http://localhost:5173")),
+		AllowedOwners:      parseOwners(os.Getenv("ALLOWED_OWNERS")),
 		OtelEndpoint:       os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 		OtelServiceName:    envDefault("OTEL_SERVICE_NAME", "code-review-agent"),
 		TrustXForwardedFor: envBool("TRUST_X_FORWARDED_FOR", false),
@@ -48,6 +50,9 @@ func (c *Config) Validate() error {
 	}
 	if c.APIToken == "" {
 		slog.Warn("API_TOKEN not set; manual review trigger is unauthenticated — only safe for local development")
+	}
+	if len(c.AllowedOwners) == 0 {
+		slog.Warn("ALLOWED_OWNERS not set; bot will review ANY repository — only safe for local development")
 	}
 	return nil
 }
@@ -84,4 +89,28 @@ func parseOrigins(raw string) map[string]bool {
 		}
 	}
 	return set
+}
+
+// parseOwners 解析逗号分隔的仓库 owner 白名单，统一转小写（GitHub owner 大小写不敏感）。
+func parseOwners(raw string) map[string]bool {
+	set := map[string]bool{}
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.ToLower(strings.TrimSpace(o))
+		if o != "" {
+			set[o] = true
+		}
+	}
+	return set
+}
+
+// AllowRepo 判断某仓库（owner/repo）是否在允许名单内。空白名单 = 不限制（仅限本地开发）。
+func (c *Config) AllowRepo(repoFullName string) bool {
+	if len(c.AllowedOwners) == 0 {
+		return true
+	}
+	owner, _, ok := strings.Cut(repoFullName, "/")
+	if !ok || owner == "" {
+		return false
+	}
+	return c.AllowedOwners[strings.ToLower(owner)]
 }

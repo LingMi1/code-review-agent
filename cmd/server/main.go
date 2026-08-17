@@ -110,6 +110,11 @@ func main() {
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid repo: %s", event.RepoFullName)
 		}
+		if !cfg.AllowRepo(event.RepoFullName) {
+			slog.Warn("webhook: repo not in allowlist, dropped", "repo", event.RepoFullName)
+			db.AuditLog("webhook.rejected", event.PRNumber, event.RepoFullName, "not_in_allowlist")
+			return nil
+		}
 		db.AuditLog("webhook.received", event.PRNumber, event.RepoFullName, event.Action)
 		return reviewSvc.Review(ctx, parts[0], parts[1], event.PRNumber, event.HeadSHA, 0)
 	}
@@ -153,6 +158,10 @@ func main() {
 			}
 			if req.Owner == "" || req.Repo == "" || req.PRNumber <= 0 {
 				writeError(w, http.StatusBadRequest, "owner, repo, pr_number are required")
+				return
+			}
+			if !cfg.AllowRepo(req.Owner + "/" + req.Repo) {
+				writeError(w, http.StatusForbidden, "repo not allowed")
 				return
 			}
 			slog.Info("manual review trigger",
