@@ -105,8 +105,10 @@ type ReviewRequest struct {
 
 // ReviewResult 是审查结果。
 type ReviewResult struct {
-	Text     string // Agent 返回的原始文本
-	Duration time.Duration
+	Text         string // Agent 返回的原始文本
+	Duration     time.Duration
+	InputTokens  int64 // 本次审查的输入 token 数（RESULT 事件携带，缺省 0）
+	OutputTokens int64 // 本次审查的输出 token 数
 }
 
 // RunReview 发送审查请求到 agent-go 认知面，收集并返回最终结果。
@@ -165,12 +167,17 @@ func (c *Client) run(ctx context.Context, runReq *agentv1.RunRequest) (*ReviewRe
 		}
 
 		callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
-		finalText, err := c.runOnce(callCtx, runReq)
+		finalText, inputTokens, outputTokens, err := c.runOnce(callCtx, runReq)
 		cancel()
 
 		if err == nil {
 			c.cb.onSuccess()
-			return &ReviewResult{Text: finalText, Duration: time.Since(start)}, nil
+			return &ReviewResult{
+				Text:         finalText,
+				Duration:     time.Since(start),
+				InputTokens:  inputTokens,
+				OutputTokens: outputTokens,
+			}, nil
 		}
 
 		c.cb.onFailure()
@@ -191,11 +198,11 @@ func (c *Client) run(ctx context.Context, runReq *agentv1.RunRequest) (*ReviewRe
 	return nil, lastErr
 }
 
-// runOnce 打开 gRPC stream 并收集最终结果文本。
-func (c *Client) runOnce(ctx context.Context, runReq *agentv1.RunRequest) (string, error) {
+// runOnce 打开 gRPC stream 并收集最终结果文本与 token 用量。
+func (c *Client) runOnce(ctx context.Context, runReq *agentv1.RunRequest) (finalText string, inputTokens, outputTokens int64, err error) {
 	stream, err := c.svc.Run(ctx, runReq, grpc.WaitForReady(true))
 	if err != nil {
-		return "", fmt.Errorf("cognition: open run stream: %w", err)
+		return "", 0, 0, fmt.Errorf("cognition: open run stream: %w", err)
 	}
 
 	return collectFinalResult(runReq.GetRunId(), stream)
@@ -216,16 +223,15 @@ func isRetryable(err error) bool {
 	}
 }
 
-// collectFinalResult 从 gRPC server-stream 中收集最终结果文本。
-func collectFinalResult(runID string, stream agentv1.CognitionService_RunClient) (string, error) {
-	var finalText string
+// collectFinalResult 从 gRPC server-stream 中收集最终结果文本与 token 用量。
+func collectFinalResult(runID string, stream agentv1.CognitionService_RunClient) (finalText string, inputTokens, outputTokens int64, err error) {
 	for {
 		event, err := stream.Recv()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("cognition: recv event: %w", err)
+			return "", 0, 0, fmt.Errorf("cognition: recv event: %w", err)
 		}
 
 		slog.Debug("cognition: event",
@@ -246,15 +252,19 @@ func collectFinalResult(runID string, stream agentv1.CognitionService_RunClient)
 		}
 		if result := event.GetResult(); result != nil {
 			finalText = result.GetText()
+			if usage := result.GetUsage(); usage != nil {
+				inputTokens = usage.GetInputTokens()
+				outputTokens = usage.GetOutputTokens()
+			}
 		}
 		if event.GetFinish() {
 			break
 		}
 	}
 	if finalText == "" {
-		return "", fmt.Errorf("cognition: no result text in run %s", runID)
+		return "", 0, 0, fmt.Errorf("cognition: no result text in run %s", runID)
 	}
-	return finalText, nil
+	return finalText, inputTokens, outputTokens, nil
 }
 
 // truncate 截断字符串用于日志。按 rune 截断，避免切割多字节字符产生非法 UTF-8。

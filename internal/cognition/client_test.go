@@ -64,7 +64,7 @@ func TestCollectFinalResultNormal(t *testing.T) {
 		resultEvent("final answer", true),
 	}}
 
-	got, err := collectFinalResult("run-1", stream)
+	got, _, _, err := collectFinalResult("run-1", stream)
 	if err != nil {
 		t.Fatalf("collectFinalResult: unexpected error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestCollectFinalResultFinishStopsEarly(t *testing.T) {
 		resultEvent("should not be read", true),
 	}}
 
-	got, err := collectFinalResult("run-2", stream)
+	got, _, _, err := collectFinalResult("run-2", stream)
 	if err != nil {
 		t.Fatalf("collectFinalResult: unexpected error: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestCollectFinalResultNoText(t *testing.T) {
 		thoughtEvent("only thoughts, no result"),
 	}}
 
-	if _, err := collectFinalResult("run-3", stream); err == nil {
+	if _, _, _, err := collectFinalResult("run-3", stream); err == nil {
 		t.Fatal("expected error when stream ends without result text")
 	}
 }
@@ -101,7 +101,7 @@ func TestCollectFinalResultNoText(t *testing.T) {
 func TestCollectFinalResultRecvError(t *testing.T) {
 	stream := &mockRunClient{err: status.Error(codes.Unavailable, "server down")}
 
-	if _, err := collectFinalResult("run-4", stream); err == nil {
+	if _, _, _, err := collectFinalResult("run-4", stream); err == nil {
 		t.Fatal("expected error when Recv returns non-EOF error")
 	}
 }

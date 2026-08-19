@@ -61,6 +61,9 @@ type CaseResult struct {
 	TruePositives   int          `json:"true_positives"`
 	FalsePositives  int          `json:"false_positives"`
 	FalseNegatives  int          `json:"false_negatives"`
+	LatencyMs       int64        `json:"latency_ms"`        // 单次审查耗时
+	InputTokens     int64        `json:"input_tokens"`      // 单次审查输入 token 数
+	OutputTokens    int64        `json:"output_tokens"`     // 单次审查输出 token 数
 	MatchedIssues   []FoundIssue `json:"matched_issues"`
 	UnmatchedIssues []FoundIssue `json:"unmatched_issues"`
 	MissedIssues    []ExpectedIssue `json:"missed_issues"`
@@ -77,8 +80,18 @@ type Report struct {
 	MicroPrecision   float64 `json:"micro_precision"`
 	MicroRecall      float64 `json:"micro_recall"`
 	MicroF1          float64 `json:"micro_f1"`
+	AvgLatencyMs     float64 `json:"avg_latency_ms"`      // 平均单次审查耗时（毫秒）
+	TotalTokens      int64   `json:"total_tokens"`        // 全部用例 token 消耗合计
+	AvgTokens        float64 `json:"avg_tokens"`          // 平均单次审查 token 消耗
 	Results          []CaseResult `json:"results"`
 }
 
-// ReviewFunc 是审查函数签名：给定 PR diff，返回找到的问题列表。
-type ReviewFunc func(diff string, language string) ([]FoundIssue, error)
+// Usage 是一次审查调用的 token 消耗（来自认知面 gRPC 的 usage 信息）。
+// mock reviewer 不消耗 token，两个字段均为 0。
+type Usage struct {
+	InputTokens  int64
+	OutputTokens int64
+}
+
+// ReviewFunc 是审查函数签名：给定 PR diff，返回找到的问题列表及 token 消耗。
+type ReviewFunc func(diff string, language string) ([]FoundIssue, Usage, error)

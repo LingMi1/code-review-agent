@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Run 加载测试用例，执行评估，输出报告。
@@ -34,6 +35,9 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 	// 3. 逐用例评估
 	var results []CaseResult
 	var totalTP, totalFP, totalFN int
+	var totalTokens int64
+	var totalLatencyMs int64
+	var evaluatedCases int // 审查成功且有 latency/token 数据的用例数
 
 	for _, c := range cases {
 		exp, ok := expected[c.ID]
@@ -47,26 +51,37 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 			continue
 		}
 
-		found, err := reviewFn(c.Diff, c.Language)
+		start := time.Now()
+		found, usage, err := reviewFn(c.Diff, c.Language)
+		latencyMs := time.Since(start).Milliseconds()
 		if err != nil {
 			// 审查器失败不能当作"找到 0 个问题"，否则会把失败误记为 recall=0。
 			// 明确标记该用例未完成，避免污染指标。
 			slog.Warn("eval: review failed", "case", c.ID, "error", err)
 			results = append(results, CaseResult{
-				CaseID:   c.ID,
-				CaseName: c.Name,
-				Category: c.Category,
-				Passed:   false,
+				CaseID:    c.ID,
+				CaseName:  c.Name,
+				Category:  c.Category,
+				Passed:    false,
+				LatencyMs: latencyMs,
 			})
 			continue
 		}
 		result := evaluateCase(c, exp, found)
+		result.LatencyMs = latencyMs
+		result.InputTokens = usage.InputTokens
+		result.OutputTokens = usage.OutputTokens
 		results = append(results, result)
 
 		// Micro 指标汇总全部用例（无论是否通过），否则全局指标会系统性偏高。
 		totalTP += result.TruePositives
 		totalFP += result.FalsePositives
 		totalFN += result.FalseNegatives
+
+		// token 与延迟汇总（只统计审查成功的用例，失败不计入避免拉低均值）。
+		totalTokens += usage.InputTokens + usage.OutputTokens
+		totalLatencyMs += latencyMs
+		evaluatedCases++
 	}
 
 	// 4. 计算宏观指标（每个用例 F1 的均值）
@@ -85,9 +100,16 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 		TotalCases:  len(cases),
 		PassedCases: countPassed(results),
 		Results:     results,
+		TotalTokens: totalTokens,
 	}
 	if report.TotalCases > 0 {
 		report.PassRate = float64(report.PassedCases) / float64(report.TotalCases)
+	}
+	if totalLatencyMs > 0 && evaluatedCases > 0 {
+		report.AvgLatencyMs = float64(totalLatencyMs) / float64(evaluatedCases)
+	}
+	if totalTokens > 0 && evaluatedCases > 0 {
+		report.AvgTokens = float64(totalTokens) / float64(evaluatedCases)
 	}
 	if validCases > 0 {
 		report.MacroPrecision = sumPrecision / float64(validCases)
@@ -112,9 +134,9 @@ func Run(corpusDir, expectedDir string, reviewFn ReviewFunc) (*Report, error) {
 // evaluateCase 评估单个用例。
 func evaluateCase(c EvalCase, exp ExpectedResult, found []FoundIssue) CaseResult {
 	result := CaseResult{
-		CaseID:    c.ID,
-		CaseName:  c.Name,
-		Category:  c.Category,
+		CaseID:        c.ID,
+		CaseName:      c.Name,
+		Category:      c.Category,
 		ExpectedCount: len(exp.Issues),
 		FoundCount:    len(found),
 	}
@@ -304,6 +326,9 @@ func PrintReport(report *Report) {
 	fmt.Printf("Macro Precision: %.2f\n", report.MacroPrecision)
 	fmt.Printf("Macro Recall:    %.2f\n", report.MacroRecall)
 	fmt.Printf("Macro F1:        %.2f\n", report.MacroF1)
+	fmt.Println()
+	fmt.Printf("Avg Latency:     %.0f ms/case\n", report.AvgLatencyMs)
+	fmt.Printf("Avg Tokens:      %.0f/case (total %d)\n", report.AvgTokens, report.TotalTokens)
 	fmt.Println()
 	fmt.Println("═ Per-Case Results ═══════════════════════════════")
 	fmt.Println()

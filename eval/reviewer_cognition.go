@@ -24,14 +24,14 @@ func CognitionReview(addr string) (ReviewFunc, error) {
 	if err != nil {
 		return nil, err
 	}
-	return func(diffStr, _ string) ([]FoundIssue, error) {
+	return func(diffStr, _ string) ([]FoundIssue, Usage, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		// 与生产一致：解析 diff → 构造 prompt → 调用 react 认知面 → 解析 JSON。
 		files := diff.Parse(diffStr)
 		if len(files) == 0 {
-			return nil, fmt.Errorf("eval: diff parsed into no files")
+			return nil, Usage{}, fmt.Errorf("eval: diff parsed into no files")
 		}
 		reviewPrompt := prompt.BuildReviewPrompt("", files)
 
@@ -42,14 +42,17 @@ func CognitionReview(addr string) (ReviewFunc, error) {
 			MaxSteps:  5,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("cognition review: %w", err)
+			return nil, Usage{}, fmt.Errorf("cognition review: %w", err)
 		}
 
 		out, err := review.ParseResult(result.Text)
 		if err != nil {
-			return nil, fmt.Errorf("parse review result: %w", err)
+			return nil, Usage{}, fmt.Errorf("parse review result: %w", err)
 		}
-		return toFoundIssues(out.Issues), nil
+		return toFoundIssues(out.Issues), Usage{
+			InputTokens:  result.InputTokens,
+			OutputTokens: result.OutputTokens,
+		}, nil
 	}, nil
 }
 

@@ -8,7 +8,7 @@ import (
 // mockReview 是一个基于关键字的 mock 审查器。
 // 它在 diff 中搜索已知 bug 模式并返回 FoundIssue。
 // 生产环境中应替换为真实的 agent-go cognition gRPC 调用。
-func mockReview(diff string, language string) ([]FoundIssue, error) {
+func mockReview(diff string, language string) ([]FoundIssue, Usage, error) {
 	var issues []FoundIssue
 
 	checks := []struct {
@@ -67,5 +67,5 @@ func mockReview(diff string, language string) ([]FoundIssue, error) {
 		}
 	}
 
-	return issues, nil
+	return issues, Usage{}, nil
 }
